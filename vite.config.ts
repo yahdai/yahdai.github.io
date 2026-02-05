@@ -5,7 +5,8 @@ import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
-  base: '/yahdai-academia/',
+  base: '/',
+  // base: '/yahdai-academia/',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
