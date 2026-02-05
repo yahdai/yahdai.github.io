@@ -5,9 +5,12 @@ import {
   getPeriodos, createPeriodo, updatePeriodo, deletePeriodo,
   getEspecialidades, createEspecialidad, updateEspecialidad, deleteEspecialidad,
   getFrecuencias, createFrecuencia, updateFrecuencia, deleteFrecuencia,
-  getHorarios, createHorario, updateHorario, deleteHorario
+  getHorarios, createHorario, updateHorario, deleteHorario,
+  getProfesores, createProfesor, updateProfesor, deleteProfesor,
+  getTiposDocumentos,
+  type ProfesorConRelaciones
 } from '@/services/catalogos'
-import type { Institucion, Periodo, Especialidad, Frecuencia, Horario } from '@/types/database.types'
+import type { Institucion, Periodo, Especialidad, Frecuencia, Horario, TipoDocumento } from '@/types/database.types'
 
 const activeTab = ref('instituciones')
 const loading = ref(false)
@@ -20,17 +23,30 @@ const periodos = ref<Periodo[]>([])
 const especialidades = ref<Especialidad[]>([])
 const frecuencias = ref<Frecuencia[]>([])
 const horarios = ref<Horario[]>([])
+const profesores = ref<ProfesorConRelaciones[]>([])
+const tiposDocumentos = ref<TipoDocumento[]>([])
 
 // Modal state
 const showModal = ref(false)
 const modalMode = ref<'create' | 'edit'>('create')
 const modalTitle = ref('')
 
-// Form fields
+// Form fields - simple
 const formNombre = ref('')
 const formHoraInicio = ref('')
 const formHoraFin = ref('')
 const editingId = ref<number | null>(null)
+
+// Form fields - profesor
+const formProfesorNombres = ref('')
+const formProfesorApPaterno = ref('')
+const formProfesorApMaterno = ref('')
+const formProfesorTipoDocumento = ref<number | null>(null)
+const formProfesorDocumento = ref('')
+const formProfesorCelular = ref('')
+const formProfesorCorreo = ref('')
+const formProfesorEspecialidad = ref<number | null>(null)
+const editingProfesorPersonaId = ref<number | null>(null)
 
 // ID institución hardcodeado (TODO: obtener del usuario logueado)
 const ID_INSTITUCION = 1
@@ -99,6 +115,22 @@ async function loadHorarios() {
   }
 }
 
+async function loadProfesores() {
+  loading.value = true
+  error.value = null
+  try {
+    // Cargar especialidades si no están cargadas (para el select del modal)
+    if (especialidades.value.length === 0) {
+      especialidades.value = await getEspecialidades(ID_INSTITUCION)
+    }
+    profesores.value = await getProfesores(ID_INSTITUCION)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Error al cargar profesores'
+  } finally {
+    loading.value = false
+  }
+}
+
 function loadCurrentTab() {
   switch (activeTab.value) {
     case 'instituciones': loadInstituciones(); break
@@ -106,6 +138,7 @@ function loadCurrentTab() {
     case 'especialidades': loadEspecialidades(); break
     case 'frecuencias': loadFrecuencias(); break
     case 'horarios': loadHorarios(); break
+    case 'profesores': loadProfesores(); break
   }
 }
 
@@ -113,12 +146,24 @@ function loadCurrentTab() {
 // MODAL HELPERS
 // ============================================
 
+function resetProfesorForm() {
+  formProfesorNombres.value = ''
+  formProfesorApPaterno.value = ''
+  formProfesorApMaterno.value = ''
+  formProfesorDocumento.value = ''
+  formProfesorCelular.value = ''
+  formProfesorCorreo.value = ''
+  formProfesorEspecialidad.value = null
+  editingProfesorPersonaId.value = null
+}
+
 function openCreateModal() {
   modalMode.value = 'create'
   formNombre.value = ''
   formHoraInicio.value = ''
   formHoraFin.value = ''
   editingId.value = null
+  resetProfesorForm()
 
   switch (activeTab.value) {
     case 'instituciones': modalTitle.value = 'Nueva Institución'; break
@@ -126,13 +171,15 @@ function openCreateModal() {
     case 'especialidades': modalTitle.value = 'Nueva Especialidad'; break
     case 'frecuencias': modalTitle.value = 'Nueva Frecuencia'; break
     case 'horarios': modalTitle.value = 'Nuevo Horario'; break
+    case 'profesores': modalTitle.value = 'Nuevo Profesor'; break
   }
 
   showModal.value = true
 }
 
-function openEditModal(item: Institucion | Periodo | Especialidad | Frecuencia | Horario) {
+function openEditModal(item: Institucion | Periodo | Especialidad | Frecuencia | Horario | ProfesorConRelaciones) {
   modalMode.value = 'edit'
+  resetProfesorForm()
 
   if (activeTab.value === 'horarios') {
     const horario = item as Horario
@@ -140,6 +187,18 @@ function openEditModal(item: Institucion | Periodo | Especialidad | Frecuencia |
     formHoraFin.value = horario.hora_fin
     editingId.value = horario.id_horario
     modalTitle.value = 'Editar Horario'
+  } else if (activeTab.value === 'profesores') {
+    const profesor = item as ProfesorConRelaciones
+    formProfesorNombres.value = profesor.personas.nombres
+    formProfesorApPaterno.value = profesor.personas.ap_paterno
+    formProfesorApMaterno.value = profesor.personas.ap_materno || ''
+    formProfesorDocumento.value = profesor.personas.num_documento || ''
+    formProfesorCelular.value = profesor.personas.celular || ''
+    formProfesorCorreo.value = profesor.personas.correo || ''
+    formProfesorEspecialidad.value = profesor.id_especialidad
+    editingId.value = profesor.id_profesor
+    editingProfesorPersonaId.value = profesor.id_persona
+    modalTitle.value = 'Editar Profesor'
   } else {
     formNombre.value = (item as { nombre: string }).nombre
     switch (activeTab.value) {
@@ -171,6 +230,7 @@ function closeModal() {
   formHoraInicio.value = ''
   formHoraFin.value = ''
   editingId.value = null
+  resetProfesorForm()
 }
 
 function showSuccess(message: string) {
@@ -242,6 +302,34 @@ async function handleSave() {
       await loadHorarios()
     }
 
+    else if (activeTab.value === 'profesores') {
+      if (modalMode.value === 'create') {
+        await createProfesor({
+          nombres: formProfesorNombres.value,
+          ap_paterno: formProfesorApPaterno.value,
+          ap_materno: formProfesorApMaterno.value || undefined,
+          num_documento: formProfesorDocumento.value || undefined,
+          celular: formProfesorCelular.value || undefined,
+          correo: formProfesorCorreo.value || undefined,
+          id_especialidad: formProfesorEspecialidad.value || undefined,
+          id_institucion: ID_INSTITUCION
+        })
+        showSuccess('Profesor creado correctamente')
+      } else {
+        await updateProfesor(editingId.value!, editingProfesorPersonaId.value!, {
+          nombres: formProfesorNombres.value,
+          ap_paterno: formProfesorApPaterno.value,
+          ap_materno: formProfesorApMaterno.value || undefined,
+          num_documento: formProfesorDocumento.value || undefined,
+          celular: formProfesorCelular.value || undefined,
+          correo: formProfesorCorreo.value || undefined,
+          id_especialidad: formProfesorEspecialidad.value || undefined
+        })
+        showSuccess('Profesor actualizado correctamente')
+      }
+      await loadProfesores()
+    }
+
     closeModal()
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Error al guardar'
@@ -283,6 +371,11 @@ async function handleDelete(id: number) {
         showSuccess('Horario eliminado correctamente')
         await loadHorarios()
         break
+      case 'profesores':
+        await deleteProfesor(id)
+        showSuccess('Profesor eliminado correctamente')
+        await loadProfesores()
+        break
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Error al eliminar. Puede que existan registros relacionados.'
@@ -299,6 +392,11 @@ function changeTab(tab: string) {
 
 function formatTime(time: string): string {
   return time.substring(0, 5)
+}
+
+function getProfesorFullName(profesor: ProfesorConRelaciones): string {
+  const p = profesor.personas
+  return `${p.nombres} ${p.ap_paterno}${p.ap_materno ? ' ' + p.ap_materno : ''}`
 }
 
 onMounted(() => {
@@ -367,6 +465,14 @@ onMounted(() => {
         @click="changeTab('horarios')"
       >
         Horarios
+      </a>
+      <a
+        role="tab"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'profesores' }"
+        @click="changeTab('profesores')"
+      >
+        Profesores
       </a>
     </div>
 
@@ -646,17 +752,77 @@ onMounted(() => {
           </div>
         </div>
 
+        <!-- Profesores -->
+        <div v-if="activeTab === 'profesores'">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="card-title">Profesores</h2>
+            <button class="btn btn-primary btn-sm" @click="openCreateModal">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Agregar
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nombre Completo</th>
+                  <th>Documento</th>
+                  <th>Especialidad</th>
+                  <th>Celular</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="loading">
+                  <td colspan="6" class="text-center py-8">
+                    <span class="loading loading-spinner loading-md"></span>
+                  </td>
+                </tr>
+                <tr v-else-if="profesores.length === 0">
+                  <td colspan="6" class="text-center text-base-content/60">
+                    No hay profesores registrados
+                  </td>
+                </tr>
+                <tr v-else v-for="item in profesores" :key="item.id_profesor">
+                  <td>{{ item.id_profesor }}</td>
+                  <td>{{ getProfesorFullName(item) }}</td>
+                  <td>{{ item.personas.num_documento || '-' }}</td>
+                  <td>{{ item.especialidades?.nombre || '-' }}</td>
+                  <td>{{ item.personas.celular || '-' }}</td>
+                  <td>
+                    <div class="flex gap-1">
+                      <button class="btn btn-ghost btn-sm btn-square" @click="openEditModal(item)">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      <button class="btn btn-ghost btn-sm btn-square text-error" @click="handleDelete(item.id_profesor)">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
 
     <!-- Modal -->
     <dialog class="modal" :class="{ 'modal-open': showModal }">
-      <div class="modal-box">
+      <div class="modal-box" :class="{ 'max-w-2xl': activeTab === 'profesores' }">
         <h3 class="font-bold text-lg mb-4">{{ modalTitle }}</h3>
 
         <form @submit.prevent="handleSave">
           <!-- Form for nombre (instituciones, periodos, especialidades, frecuencias) -->
-          <div v-if="activeTab !== 'horarios'" class="form-control">
+          <div v-if="activeTab !== 'horarios' && activeTab !== 'profesores'" class="form-control">
             <label class="label">
               <span class="label-text">Nombre</span>
             </label>
@@ -670,7 +836,7 @@ onMounted(() => {
           </div>
 
           <!-- Form for horarios -->
-          <div v-else class="space-y-4">
+          <div v-else-if="activeTab === 'horarios'" class="space-y-4">
             <div class="form-control">
               <label class="label">
                 <span class="label-text">Hora Inicio</span>
@@ -692,6 +858,91 @@ onMounted(() => {
                 class="input input-bordered"
                 required
               />
+            </div>
+          </div>
+
+          <!-- Form for profesores -->
+          <div v-else-if="activeTab === 'profesores'" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Nombres *</span>
+                </label>
+                <input
+                  v-model="formProfesorNombres"
+                  type="text"
+                  class="input input-bordered"
+                  placeholder="Nombres"
+                  required
+                />
+              </div>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Apellido Paterno *</span>
+                </label>
+                <input
+                  v-model="formProfesorApPaterno"
+                  type="text"
+                  class="input input-bordered"
+                  placeholder="Apellido paterno"
+                  required
+                />
+              </div>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Apellido Materno</span>
+                </label>
+                <input
+                  v-model="formProfesorApMaterno"
+                  type="text"
+                  class="input input-bordered"
+                  placeholder="Apellido materno"
+                />
+              </div>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Documento</span>
+                </label>
+                <input
+                  v-model="formProfesorDocumento"
+                  type="text"
+                  class="input input-bordered"
+                  placeholder="DNI / CE"
+                />
+              </div>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Celular</span>
+                </label>
+                <input
+                  v-model="formProfesorCelular"
+                  type="text"
+                  class="input input-bordered"
+                  placeholder="999 999 999"
+                />
+              </div>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Correo</span>
+                </label>
+                <input
+                  v-model="formProfesorCorreo"
+                  type="email"
+                  class="input input-bordered"
+                  placeholder="correo@ejemplo.com"
+                />
+              </div>
+              <div class="form-control md:col-span-2">
+                <label class="label">
+                  <span class="label-text">Especialidad</span>
+                </label>
+                <select v-model="formProfesorEspecialidad" class="select select-bordered">
+                  <option :value="null">Sin especialidad</option>
+                  <option v-for="esp in especialidades" :key="esp.id_especialidad" :value="esp.id_especialidad">
+                    {{ esp.nombre }}
+                  </option>
+                </select>
+              </div>
             </div>
           </div>
 

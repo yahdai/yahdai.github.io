@@ -1,5 +1,11 @@
 import { supabase } from './supabase'
-import type { Institucion, Periodo, Especialidad, Frecuencia, Horario } from '@/types/database.types'
+import type { Institucion, Periodo, Especialidad, Frecuencia, Horario, Profesor, Persona, TipoDocumento } from '@/types/database.types'
+
+// Tipo para profesor con relaciones
+export interface ProfesorConRelaciones extends Profesor {
+  personas: Persona
+  especialidades: Especialidad | null
+}
 
 // ============================================
 // INSTITUCIONES
@@ -239,6 +245,152 @@ export async function deleteHorario(id: number): Promise<void> {
     .from('horarios')
     .delete()
     .eq('id_horario', id)
+
+  if (error) throw error
+}
+
+// ============================================
+// TIPOS DE DOCUMENTOS
+// ============================================
+
+export async function getTiposDocumentos(): Promise<TipoDocumento[]> {
+  const { data, error } = await supabase
+    .from('tipos_documentos')
+    .select('*')
+    .order('id_tipo_documento')
+
+  if (error) throw error
+  return data || []
+}
+
+// ============================================
+// PROFESORES (DOCENTES)
+// ============================================
+
+export async function getProfesores(idInstitucion?: number): Promise<ProfesorConRelaciones[]> {
+  let query = supabase
+    .from('profesores')
+    .select(`
+      *,
+      personas(*),
+      especialidades(*)
+    `)
+    .order('fecha_registro', { ascending: false })
+
+  if (idInstitucion) {
+    query = query.eq('id_institucion', idInstitucion)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  return (data || []) as ProfesorConRelaciones[]
+}
+
+export interface CreateProfesorData {
+  nombres: string
+  ap_paterno: string
+  ap_materno?: string
+  id_tipo_documento?: number
+  num_documento?: string
+  celular?: string
+  correo?: string
+  id_especialidad?: number
+  id_institucion: number
+}
+
+export async function createProfesor(data: CreateProfesorData): Promise<Profesor> {
+  // Primero crear la persona
+  const { data: persona, error: personaError } = await supabase
+    .from('personas')
+    .insert({
+      nombres: data.nombres,
+      ap_paterno: data.ap_paterno,
+      ap_materno: data.ap_materno || null,
+      id_tipo_documento: data.id_tipo_documento || null,
+      num_documento: data.num_documento || null,
+      celular: data.celular || null,
+      correo: data.correo || null
+    })
+    .select()
+    .single()
+
+  if (personaError) throw personaError
+
+  // Luego crear el profesor vinculado a la persona
+  const { data: profesor, error: profesorError } = await supabase
+    .from('profesores')
+    .insert({
+      id_persona: persona.id_persona,
+      id_institucion: data.id_institucion,
+      id_especialidad: data.id_especialidad || null
+    })
+    .select()
+    .single()
+
+  if (profesorError) {
+    // Si falla, intentar eliminar la persona creada
+    await supabase.from('personas').delete().eq('id_persona', persona.id_persona)
+    throw profesorError
+  }
+
+  return profesor
+}
+
+export interface UpdateProfesorData {
+  nombres: string
+  ap_paterno: string
+  ap_materno?: string
+  id_tipo_documento?: number
+  num_documento?: string
+  celular?: string
+  correo?: string
+  id_especialidad?: number
+}
+
+export async function updateProfesor(
+  idProfesor: number,
+  idPersona: number,
+  data: UpdateProfesorData
+): Promise<Profesor> {
+  // Actualizar datos de la persona
+  const { error: personaError } = await supabase
+    .from('personas')
+    .update({
+      nombres: data.nombres,
+      ap_paterno: data.ap_paterno,
+      ap_materno: data.ap_materno || null,
+      id_tipo_documento: data.id_tipo_documento || null,
+      num_documento: data.num_documento || null,
+      celular: data.celular || null,
+      correo: data.correo || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id_persona', idPersona)
+
+  if (personaError) throw personaError
+
+  // Actualizar datos del profesor
+  const { data: profesor, error: profesorError } = await supabase
+    .from('profesores')
+    .update({
+      id_especialidad: data.id_especialidad || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id_profesor', idProfesor)
+    .select()
+    .single()
+
+  if (profesorError) throw profesorError
+
+  return profesor
+}
+
+export async function deleteProfesor(idProfesor: number): Promise<void> {
+  const { error } = await supabase
+    .from('profesores')
+    .delete()
+    .eq('id_profesor', idProfesor)
 
   if (error) throw error
 }
