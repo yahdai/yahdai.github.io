@@ -25,21 +25,21 @@ async function handleLogout() {
 <template>
   <div class="min-h-screen bg-base-200">
     <!-- Navbar -->
-    <div class="navbar bg-primary text-primary-content shadow-md fixed top-0 z-50">
+    <div class="navbar bg-base-100 shadow-sm fixed top-0 z-50">
       <div class="flex-none">
-        <button class="btn btn-square btn-ghost text-primary-content" @click="sidebarOpen = !sidebarOpen">
+        <button class="btn btn-square btn-ghost" @click="sidebarOpen = !sidebarOpen">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-5 h-5 stroke-current">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
           </svg>
         </button>
       </div>
       <div class="flex-1">
-        <a class="btn btn-ghost text-xl text-primary-content">Yahdai Academia</a>
+        <a class="btn btn-ghost text-xl">Yahdai Academia</a>
       </div>
       <div class="flex-none">
         <div class="dropdown dropdown-end">
-          <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar placeholder text-primary-content">
-            <div class="bg-primary-content text-primary rounded-full w-10">
+          <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar placeholder">
+            <div class="bg-neutral text-neutral-content rounded-full w-10">
               <span>U</span>
             </div>
           </div>
@@ -53,20 +53,21 @@ async function handleLogout() {
     <div class="flex pt-16">
       <!-- Sidebar -->
       <aside
-        class="bg-base-100 min-h-[calc(100vh-4rem)] shadow-sm transition-all duration-300 fixed left-0 top-16"
-        :class="sidebarOpen ? 'w-64' : 'w-16'"
+        class="bg-base-100 min-h-[calc(100vh-4rem)] shadow-lg border-r border-base-300 transition-all duration-300 fixed left-0 top-16"
+        :class="sidebarOpen ? 'w-64' : 'w-20'"
       >
-        <ul class="menu p-2">
+        <ul class="menu p-4 gap-1">
           <li v-for="item in menuItems" :key="item.path">
             <router-link
               :to="item.path"
-              class="flex items-center gap-3"
-              :class="{ 'justify-center': !sidebarOpen }"
+              class="flex items-center gap-3 rounded-lg transition-all duration-200"
+              :class="{ 'justify-center px-4': !sidebarOpen }"
+              active-class="bg-primary text-primary-content font-semibold shadow-sm"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon" />
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" :d="item.icon" />
               </svg>
-              <span v-if="sidebarOpen">{{ item.name }}</span>
+              <span v-if="sidebarOpen" class="font-medium">{{ item.name }}</span>
             </router-link>
           </li>
         </ul>
@@ -75,7 +76,7 @@ async function handleLogout() {
       <!-- Main content -->
       <main
         class="flex-1 p-6 transition-all duration-300"
-        :class="sidebarOpen ? 'ml-64' : 'ml-16'"
+        :class="sidebarOpen ? 'ml-64' : 'ml-20'"
       >
         <router-view />
       </main>
