@@ -72,6 +72,8 @@ src/
 - **IDs**: `serial` (int4 autoincrement), nombrados como `id_tabla` (ej: `id_matricula`)
 - **Timestamps**: Timezone `America/Lima`
 - **Tipos de documento SUNAT**: 1=DNI, 4=Carnet Extranjería, 6=RUC, 7=Pasaporte
+- **Validación de documentos**: Constraint UNIQUE en `(id_tipo_documento, num_documento)` - no se permiten duplicados
+- **Validación en código**: Usar `validarDocumentoDuplicado()` de `services/catalogos.ts` antes de crear/editar personas
 
 ### 3. Relaciones Clave
 ```
@@ -92,16 +94,20 @@ responsables  periodos    especialidades
 ```sql
 -- Personas (base para alumnos, profesores, responsables)
 personas: id_persona, nombres, ap_paterno, ap_materno, id_tipo_documento,
-          num_documento, fecha_nacimiento, celular, correo, sexo
+          num_documento, fecha_nacimiento, celular, correo, sexo, direccion
+
+-- CONSTRAINT: (id_tipo_documento, num_documento) UNIQUE
+-- No se permiten documentos duplicados del mismo tipo
 
 -- Alumnos
 alumnos: id_alumno, id_institucion, id_persona
 
 -- Matrículas
 matriculas: id_matricula, id_institucion, id_periodo, id_alumno,
-            celular_alumno, correo_alumno, id_persona_responsable,
-            celular_responsable, correo_responsable, fecha_registro,
-            tipo, estado
+            celular_alumno, correo_alumno, direccion_alumno,
+            id_persona_responsable, celular_responsable,
+            correo_responsable, direccion_responsable,
+            fecha_registro, tipo, estado
 
 -- Detalles de matrícula
 matriculas_detalles: id_matricula_detalle, id_matricula, id_profesor,
@@ -194,6 +200,19 @@ npm run build        # Build producción
 npm run preview      # Preview del build
 ```
 
+## Migraciones de Base de Datos
+
+Ejecutar en Supabase SQL Editor en este orden:
+
+1. **`supabase/migration-documento-unique.sql`**: Agrega constraint UNIQUE para validar que no se dupliquen documentos
+   - Verifica duplicados existentes antes de ejecutar
+   - Crea índice para mejorar performance
+
+2. **`supabase/migration-direccion-alumno.sql`**: Agrega campo `direccion_alumno` en tabla `matriculas`
+   - Almacena la dirección del alumno al momento de la matrícula
+
+**IMPORTANTE**: Ejecutar las migraciones en orden y verificar que no haya errores antes de continuar.
+
 ## Deployment
 
 GitHub Actions despliega automáticamente a GitHub Pages al hacer push a `main`.
@@ -231,3 +250,18 @@ Ver `.github/workflows/deploy.yml`.
 4. **Catálogos**: CRUD para `especialidades`, `frecuencias`, `horarios`, `periodos`
 
 5. **TODO**: El `id_institucion` está hardcodeado como `1`. Implementar selección de institución según el usuario logueado.
+
+## Lógica de Matrículas
+
+### Filtrado de Profesores por Especialidad
+- En el formulario de matrícula, el campo de profesor se filtra según la especialidad seleccionada
+- Solo se muestran profesores que enseñan la especialidad elegida (campo `id_especialidad` en tabla `profesores`)
+- Profesores sin especialidad asignada (`id_especialidad = null`) se muestran para todas las especialidades
+- Al cambiar de especialidad, el profesor se resetea automáticamente si no enseña la nueva especialidad
+- Si solo hay un profesor disponible para la especialidad, se auto-selecciona
+
+### Actualización de Datos
+- Al seleccionar un alumno existente, se cargan todos sus datos para actualización
+- Los cambios se aplican a la tabla `personas` (datos maestros)
+- Cada matrícula guarda una "fotografía" de los datos de contacto en ese periodo
+- Los responsables también se cargan y actualizan automáticamente

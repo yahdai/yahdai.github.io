@@ -209,11 +209,13 @@ onMounted(async () => {
                   <div class="flex items-center gap-3">
                     <div class="avatar placeholder">
                       <div class="bg-primary text-primary-content rounded-full w-10">
-                        <span class="text-sm">{{ getInitials(matricula.alumnos.personas.nombres, matricula.alumnos.personas.ap_paterno) }}</span>
+                        <span class="text-sm" v-if="matricula.alumnos?.personas">{{ getInitials(matricula.alumnos.personas.nombres, matricula.alumnos.personas.ap_paterno) }}</span>
+                        <span class="text-sm" v-else>??</span>
                       </div>
                     </div>
                     <div>
-                      <div class="font-bold">{{ getFullName(matricula.alumnos.personas) }}</div>
+                      <div class="font-bold" v-if="matricula.alumnos?.personas">{{ getFullName(matricula.alumnos.personas) }}</div>
+                      <div class="font-bold" v-else>Sin información</div>
                       <div class="text-sm text-base-content/60">ID: {{ matricula.id_matricula }}</div>
                     </div>
                   </div>

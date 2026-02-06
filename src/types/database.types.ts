@@ -60,6 +60,7 @@ export interface Persona {
   celular: string | null
   correo: string | null
   sexo: 'M' | 'F' | null
+  direccion: string | null
   created_at: string
   updated_at: string
 }
@@ -74,6 +75,7 @@ export interface Especialidad {
   id_especialidad: number
   id_institucion: number
   nombre: string
+  tipo: 'regular' | 'taller'
   created_at: string
   updated_at: string
 }
@@ -137,9 +139,11 @@ export interface Matricula {
   id_alumno: number
   celular_alumno: string | null
   correo_alumno: string | null
+  direccion_alumno: string | null
   id_persona_responsable: number | null
   celular_responsable: string | null
   correo_responsable: string | null
+  direccion_responsable: string | null
   fecha_registro: string
   tipo: 'regular' | 'especial'
   estado: 'activo' | 'finalizado' | 'cancelado'

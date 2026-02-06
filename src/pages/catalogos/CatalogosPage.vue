@@ -33,6 +33,7 @@ const modalTitle = ref('')
 
 // Form fields - simple
 const formNombre = ref('')
+const formTipo = ref<'regular' | 'taller'>('taller')
 const formHoraInicio = ref('')
 const formHoraFin = ref('')
 const editingId = ref<number | null>(null)
@@ -123,6 +124,10 @@ async function loadProfesores() {
     if (especialidades.value.length === 0) {
       especialidades.value = await getEspecialidades(ID_INSTITUCION)
     }
+    // Cargar tipos de documentos si no están cargados
+    if (tiposDocumentos.value.length === 0) {
+      tiposDocumentos.value = await getTiposDocumentos()
+    }
     profesores.value = await getProfesores(ID_INSTITUCION)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Error al cargar profesores'
@@ -150,6 +155,7 @@ function resetProfesorForm() {
   formProfesorNombres.value = ''
   formProfesorApPaterno.value = ''
   formProfesorApMaterno.value = ''
+  formProfesorTipoDocumento.value = null
   formProfesorDocumento.value = ''
   formProfesorCelular.value = ''
   formProfesorCorreo.value = ''
@@ -160,6 +166,7 @@ function resetProfesorForm() {
 function openCreateModal() {
   modalMode.value = 'create'
   formNombre.value = ''
+  formTipo.value = 'taller'
   formHoraInicio.value = ''
   formHoraFin.value = ''
   editingId.value = null
@@ -192,6 +199,7 @@ function openEditModal(item: Institucion | Periodo | Especialidad | Frecuencia |
     formProfesorNombres.value = profesor.personas.nombres
     formProfesorApPaterno.value = profesor.personas.ap_paterno
     formProfesorApMaterno.value = profesor.personas.ap_materno || ''
+    formProfesorTipoDocumento.value = profesor.personas.id_tipo_documento
     formProfesorDocumento.value = profesor.personas.num_documento || ''
     formProfesorCelular.value = profesor.personas.celular || ''
     formProfesorCorreo.value = profesor.personas.correo || ''
@@ -211,7 +219,9 @@ function openEditModal(item: Institucion | Periodo | Especialidad | Frecuencia |
         modalTitle.value = 'Editar Periodo'
         break
       case 'especialidades':
-        editingId.value = (item as Especialidad).id_especialidad
+        const especialidad = item as Especialidad
+        editingId.value = especialidad.id_especialidad
+        formTipo.value = especialidad.tipo || 'taller'
         modalTitle.value = 'Editar Especialidad'
         break
       case 'frecuencias':
@@ -227,6 +237,7 @@ function openEditModal(item: Institucion | Periodo | Especialidad | Frecuencia |
 function closeModal() {
   showModal.value = false
   formNombre.value = ''
+  formTipo.value = 'taller'
   formHoraInicio.value = ''
   formHoraFin.value = ''
   editingId.value = null
@@ -271,10 +282,10 @@ async function handleSave() {
 
     else if (activeTab.value === 'especialidades') {
       if (modalMode.value === 'create') {
-        await createEspecialidad(formNombre.value, ID_INSTITUCION)
+        await createEspecialidad(formNombre.value, ID_INSTITUCION, formTipo.value)
         showSuccess('Especialidad creada correctamente')
       } else {
-        await updateEspecialidad(editingId.value!, formNombre.value)
+        await updateEspecialidad(editingId.value!, formNombre.value, formTipo.value)
         showSuccess('Especialidad actualizada correctamente')
       }
       await loadEspecialidades()
@@ -308,6 +319,7 @@ async function handleSave() {
           nombres: formProfesorNombres.value,
           ap_paterno: formProfesorApPaterno.value,
           ap_materno: formProfesorApMaterno.value || undefined,
+          id_tipo_documento: formProfesorTipoDocumento.value || undefined,
           num_documento: formProfesorDocumento.value || undefined,
           celular: formProfesorCelular.value || undefined,
           correo: formProfesorCorreo.value || undefined,
@@ -320,6 +332,7 @@ async function handleSave() {
           nombres: formProfesorNombres.value,
           ap_paterno: formProfesorApPaterno.value,
           ap_materno: formProfesorApMaterno.value || undefined,
+          id_tipo_documento: formProfesorTipoDocumento.value || undefined,
           num_documento: formProfesorDocumento.value || undefined,
           celular: formProfesorCelular.value || undefined,
           correo: formProfesorCorreo.value || undefined,
@@ -605,23 +618,29 @@ onMounted(() => {
                 <tr>
                   <th>ID</th>
                   <th>Nombre</th>
+                  <th>Tipo</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="loading">
-                  <td colspan="3" class="text-center py-8">
+                  <td colspan="4" class="text-center py-8">
                     <span class="loading loading-spinner loading-md"></span>
                   </td>
                 </tr>
                 <tr v-else-if="especialidades.length === 0">
-                  <td colspan="3" class="text-center text-base-content/60">
+                  <td colspan="4" class="text-center text-base-content/60">
                     No hay especialidades registradas
                   </td>
                 </tr>
                 <tr v-else v-for="item in especialidades" :key="item.id_especialidad">
                   <td>{{ item.id_especialidad }}</td>
                   <td>{{ item.nombre }}</td>
+                  <td>
+                    <span class="badge badge-sm" :class="item.tipo === 'regular' ? 'badge-info' : 'badge-success'">
+                      {{ item.tipo === 'regular' ? 'Regular' : 'Taller' }}
+                    </span>
+                  </td>
                   <td>
                     <div class="flex gap-1">
                       <button class="btn btn-ghost btn-sm btn-square" @click="openEditModal(item)">
@@ -822,17 +841,36 @@ onMounted(() => {
 
         <form @submit.prevent="handleSave">
           <!-- Form for nombre (instituciones, periodos, especialidades, frecuencias) -->
-          <div v-if="activeTab !== 'horarios' && activeTab !== 'profesores'" class="form-control">
-            <label class="label">
-              <span class="label-text">Nombre</span>
-            </label>
-            <input
-              v-model="formNombre"
-              type="text"
-              class="input input-bordered"
-              placeholder="Ingrese el nombre"
-              required
-            />
+          <div v-if="activeTab !== 'horarios' && activeTab !== 'profesores'" class="space-y-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Nombre</span>
+              </label>
+              <input
+                v-model="formNombre"
+                type="text"
+                class="input input-bordered"
+                placeholder="Ingrese el nombre"
+                required
+              />
+            </div>
+
+            <!-- Campo tipo solo para especialidades -->
+            <div v-if="activeTab === 'especialidades'" class="form-control">
+              <label class="label">
+                <span class="label-text">Tipo</span>
+              </label>
+              <select v-model="formTipo" class="select select-bordered" required>
+                <option value="taller">Taller</option>
+                <option value="regular">Regular</option>
+              </select>
+              <label class="label">
+                <span class="label-text-alt">
+                  <strong>Taller:</strong> Sesiones programadas (ej: Piano, Guitarra) |
+                  <strong>Regular:</strong> Por grados continuos (ej: Primer grado)
+                </span>
+              </label>
+            </div>
           </div>
 
           <!-- Form for horarios -->
@@ -901,13 +939,24 @@ onMounted(() => {
               </div>
               <div class="form-control">
                 <label class="label">
-                  <span class="label-text">Documento</span>
+                  <span class="label-text">Tipo Documento</span>
+                </label>
+                <select v-model="formProfesorTipoDocumento" class="select select-bordered">
+                  <option :value="null">Seleccione...</option>
+                  <option v-for="tipo in tiposDocumentos" :key="tipo.id_tipo_documento" :value="tipo.id_tipo_documento">
+                    {{ tipo.nombre }}
+                  </option>
+                </select>
+              </div>
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Número Documento</span>
                 </label>
                 <input
                   v-model="formProfesorDocumento"
                   type="text"
                   class="input input-bordered"
-                  placeholder="DNI / CE"
+                  placeholder="Número de documento"
                 />
               </div>
               <div class="form-control">

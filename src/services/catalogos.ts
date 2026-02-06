@@ -125,10 +125,10 @@ export async function getEspecialidades(idInstitucion?: number): Promise<Especia
   return data || []
 }
 
-export async function createEspecialidad(nombre: string, idInstitucion: number): Promise<Especialidad> {
+export async function createEspecialidad(nombre: string, idInstitucion: number, tipo: 'regular' | 'taller' = 'taller'): Promise<Especialidad> {
   const { data, error } = await supabase
     .from('especialidades')
-    .insert({ nombre, id_institucion: idInstitucion })
+    .insert({ nombre, id_institucion: idInstitucion, tipo })
     .select()
     .single()
 
@@ -136,10 +136,10 @@ export async function createEspecialidad(nombre: string, idInstitucion: number):
   return data
 }
 
-export async function updateEspecialidad(id: number, nombre: string): Promise<Especialidad> {
+export async function updateEspecialidad(id: number, nombre: string, tipo: 'regular' | 'taller'): Promise<Especialidad> {
   const { data, error } = await supabase
     .from('especialidades')
-    .update({ nombre, updated_at: new Date().toISOString() })
+    .update({ nombre, tipo, updated_at: new Date().toISOString() })
     .eq('id_especialidad', id)
     .select()
     .single()
@@ -264,6 +264,40 @@ export async function getTiposDocumentos(): Promise<TipoDocumento[]> {
 }
 
 // ============================================
+// VALIDACIÓN DE DOCUMENTOS
+// ============================================
+
+export interface ValidarDocumentoParams {
+  idTipoDocumento: number
+  numDocumento: string
+  excludeIdPersona?: number // Para excluir una persona al editar
+}
+
+export async function validarDocumentoDuplicado(
+  params: ValidarDocumentoParams
+): Promise<{ existe: boolean; persona?: Persona }> {
+  let query = supabase
+    .from('personas')
+    .select('*')
+    .eq('id_tipo_documento', params.idTipoDocumento)
+    .eq('num_documento', params.numDocumento)
+
+  // Si estamos editando, excluir la persona actual
+  if (params.excludeIdPersona) {
+    query = query.neq('id_persona', params.excludeIdPersona)
+  }
+
+  const { data, error } = await query.maybeSingle()
+
+  if (error) throw error
+
+  return {
+    existe: !!data,
+    persona: data || undefined
+  }
+}
+
+// ============================================
 // PROFESORES (DOCENTES)
 // ============================================
 
@@ -300,6 +334,18 @@ export interface CreateProfesorData {
 }
 
 export async function createProfesor(data: CreateProfesorData): Promise<Profesor> {
+  // Validar documento duplicado si se proporcionó
+  if (data.id_tipo_documento && data.num_documento) {
+    const validacion = await validarDocumentoDuplicado({
+      idTipoDocumento: data.id_tipo_documento,
+      numDocumento: data.num_documento
+    })
+
+    if (validacion.existe) {
+      throw new Error(`Ya existe una persona registrada con este tipo y número de documento`)
+    }
+  }
+
   // Primero crear la persona
   const { data: persona, error: personaError } = await supabase
     .from('personas')
@@ -353,6 +399,19 @@ export async function updateProfesor(
   idPersona: number,
   data: UpdateProfesorData
 ): Promise<Profesor> {
+  // Validar documento duplicado si se proporcionó
+  if (data.id_tipo_documento && data.num_documento) {
+    const validacion = await validarDocumentoDuplicado({
+      idTipoDocumento: data.id_tipo_documento,
+      numDocumento: data.num_documento,
+      excludeIdPersona: idPersona // Excluir la persona actual
+    })
+
+    if (validacion.existe) {
+      throw new Error(`Ya existe otra persona registrada con este tipo y número de documento`)
+    }
+  }
+
   // Actualizar datos de la persona
   const { error: personaError } = await supabase
     .from('personas')

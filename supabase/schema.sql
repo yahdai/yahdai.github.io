@@ -28,6 +28,7 @@ create table periodos (
 create table frecuencias (
   id_frecuencia serial primary key,
   nombre varchar(50) not null,
+  numeros_de_dias varchar(25) not null,
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
 );
 
@@ -79,6 +80,7 @@ create table personas (
   celular varchar(20),
   correo varchar(100),
   sexo char(1) check (sexo in ('M', 'F')),
+  direccion varchar(200),
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
   updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
 );
@@ -95,6 +97,7 @@ create table especialidades (
   id_especialidad serial primary key,
   id_institucion integer references instituciones(id_institucion) on delete cascade,
   nombre varchar(100) not null,
+  tipo varchar(20) default 'taller' check (tipo in ('taller', 'regular')),
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
   updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
 );
@@ -148,15 +151,15 @@ create table usuarios_roles_instituciones (
 -- ============================================
 
 -- Cargas de especialidades (configuración de precios)
-create table cargas_especialidades (
-  id_carga_especialidad serial primary key,
-  id_especialidad integer references especialidades(id_especialidad) on delete cascade,
-  cant_sesiones integer not null default 4,
-  minutos_por_sesion integer not null default 60,
-  importe_sesion decimal(10,2) not null default 0,
-  created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
-);
+-- create table cargas_especialidades (
+--   id_carga_especialidad serial primary key,
+--   id_especialidad integer references especialidades(id_especialidad) on delete cascade,
+--   cant_sesiones integer not null default 4,
+--   minutos_por_sesion integer not null default 60,
+--   importe_sesion decimal(10,2) not null default 0,
+--   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
+--   updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
+-- );
 
 -- Matrículas
 create table matriculas (
@@ -166,11 +169,12 @@ create table matriculas (
   id_alumno integer references alumnos(id_alumno) on delete cascade,
   celular_alumno varchar(20),
   correo_alumno varchar(100),
+  direccion_alumno varchar(500),
   id_persona_responsable integer references personas(id_persona),
   celular_responsable varchar(20),
   correo_responsable varchar(100),
+  direccion_responsable varchar(500),
   fecha_registro date default current_date,
-  tipo varchar(20) default 'regular' check (tipo in ('regular', 'especial')),
   estado varchar(20) default 'activo' check (estado in ('activo', 'finalizado', 'cancelado')),
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
   updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
@@ -181,7 +185,7 @@ create table matriculas_detalles (
   id_matricula_detalle serial primary key,
   id_matricula integer references matriculas(id_matricula) on delete cascade,
   id_profesor integer references profesores(id_profesor),
-  id_carga_especialidad integer references cargas_especialidades(id_carga_especialidad),
+  -- id_carga_especialidad integer references cargas_especialidades(id_carga_especialidad),
   id_especialidad integer references especialidades(id_especialidad),
   id_frecuencia integer references frecuencias(id_frecuencia),
   id_horario integer references horarios(id_horario),
@@ -312,7 +316,7 @@ select setval('tipos_documentos_id_tipo_documento_seq', (select max(id_tipo_docu
 insert into medios_depositos (nombre) values ('Efectivo'), ('Transferencia'), ('Yape'), ('Plin'), ('Tarjeta');
 insert into parentescos (nombre) values ('Padre'), ('Madre'), ('Tutor'), ('Otro');
 insert into roles (nombre) values ('Administrador'), ('Recepcionista'), ('Profesor');
-insert into frecuencias (nombre) values ('1 vez por semana'), ('2 veces por semana'), ('3 veces por semana'), ('Diario');
+insert into frecuencias (nombre, numeros_de_dias) values ('A (Lunes, Miércoles y Viernes)', '2,4,6'), ('B (Martes y Jueves)', '3,5'), ('C (Solo domingos)', '7'), ('D (Lunes a Viernes)', '2,3,4,5,6');
 
 -- ============================================
 -- TRIGGER: Crear usuario automáticamente al registrarse
