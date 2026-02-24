@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/services/supabase'
 import { validarDocumentoDuplicado } from '@/services/catalogos'
@@ -82,6 +82,19 @@ const responsableForm = ref({
 })
 const parentescos = ref<{ id_parentesco: number; nombre: string }[]>([])
 
+// Cronograma de pagos
+type TipoPago = 'contado' | 'cuotas'
+interface CuotaPago {
+  numero: number
+  concepto: string
+  fechaCargo: Date
+  fechaVencimiento: Date
+  importe: number
+}
+const tipoPagoTaller = ref<TipoPago>('contado')
+const tipoPagoRegular = ref<TipoPago>('contado')
+const cronogramaPagos = ref<CuotaPago[]>([])
+
 // Loading and error states
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -101,27 +114,42 @@ const canProceedStep1 = computed(() => {
   if (isNewStudent.value) {
     return studentForm.value.nombres &&
       studentForm.value.ap_paterno &&
+      studentForm.value.id_tipo_documento &&
       studentForm.value.num_documento
   }
   return false
 })
 
 const canProceedStep2 = computed(() => {
-  // Validar que haya periodo seleccionado y al menos un detalle con especialidad
-  return periodoSeleccionado.value !== null &&
-    matriculaDetalles.value.length > 0 &&
-    matriculaDetalles.value.some(d => d.id_especialidad !== null)
+  // Validar que haya periodo seleccionado y al menos un detalle
+  if (periodoSeleccionado.value === null || matriculaDetalles.value.length === 0) {
+    return false
+  }
+
+  // Todos los detalles deben tener los campos obligatorios según el tipo
+  return matriculaDetalles.value.every(d => {
+    // Campos obligatorios para todos
+    if (d.id_especialidad === null || d.id_profesor === null || d.importe_sesion < 0) {
+      return false
+    }
+
+    const tipo = getTipoEspecialidad(d.id_especialidad)
+
+    if (tipo === 'taller') {
+      // Taller: frecuencia, horario, fecha inicio, cantidad de sesiones
+      return d.id_frecuencia !== null &&
+        d.id_horario !== null &&
+        d.fecha_inicio !== '' &&
+        d.cant_sesiones > 0
+    } else if (tipo === 'regular') {
+      // Regular: fecha inicio y fecha fin
+      return d.fecha_inicio !== '' && d.fecha_fin !== ''
+    }
+
+    return false
+  })
 })
 
-// Filtrar profesores por especialidad seleccionada para un detalle específico
-function getProfesoresFiltrados(idEspecialidad: number | null) {
-  if (!idEspecialidad) {
-    return profesores.value
-  }
-  return profesores.value.filter(
-    p => p.id_especialidad === idEspecialidad || p.id_especialidad === null
-  )
-}
 
 // Función para agregar un nuevo detalle
 function agregarDetalle() {
@@ -212,19 +240,6 @@ function onEspecialidadChange(index: number, newEsp: number | null) {
     detalle.minutos_por_sesion = calcularMinutosPorSesion(detalle.id_horario)
   }
 
-  // Verificar si el profesor actual enseña la nueva especialidad
-  if (detalle.id_profesor) {
-    const profesorActual = profesores.value.find(p => p.id_profesor === detalle.id_profesor)
-    if (profesorActual && profesorActual.id_especialidad && profesorActual.id_especialidad !== newEsp) {
-      detalle.id_profesor = null
-    }
-  }
-
-  // Auto-seleccionar si solo hay un profesor disponible
-  const disponibles = getProfesoresFiltrados(newEsp)
-  if (disponibles.length === 1 && !detalle.id_profesor) {
-    detalle.id_profesor = disponibles[0].id_profesor
-  }
 }
 
 // Generar cronograma de sesiones
@@ -323,6 +338,131 @@ function getCronogramaDetalle(detalle: MatriculaDetalle): SesionCronograma[] {
   )
 }
 
+// Generar cronograma de pagos
+function generarCronogramaPagos() {
+  const cuotas: CuotaPago[] = []
+  let numeroCuota = 1
+
+  // Calcular totales por tipo
+  const detallesTaller = matriculaDetalles.value.filter(d =>
+    d.id_especialidad && getTipoEspecialidad(d.id_especialidad) === 'taller'
+  )
+  const detallesRegular = matriculaDetalles.value.filter(d =>
+    d.id_especialidad && getTipoEspecialidad(d.id_especialidad) === 'regular'
+  )
+
+  // TALLER
+  if (detallesTaller.length > 0) {
+    const totalTaller = detallesTaller.reduce((sum, d) => sum + (d.cant_sesiones * d.importe_sesion), 0)
+
+    if (tipoPagoTaller.value === 'contado') {
+      // Pago único al contado
+      const fechaInicio = detallesTaller[0].fecha_inicio
+      const fecha = fechaInicio ? new Date(fechaInicio + 'T00:00:00') : new Date()
+      cuotas.push({
+        numero: numeroCuota++,
+        concepto: 'Pago único - Talleres',
+        fechaCargo: fecha,
+        fechaVencimiento: fecha,
+        importe: totalTaller
+      })
+    } else {
+      // Cuotas por sesiones - una cuota por cada sesión de cada taller
+      for (const detalle of detallesTaller) {
+        const nombreEsp = especialidades.value.find(e => e.id_especialidad === detalle.id_especialidad)?.nombre || 'Taller'
+        const cronogramaSesiones = getCronogramaDetalle(detalle)
+
+        for (let i = 0; i < detalle.cant_sesiones; i++) {
+          const fechaSesion = cronogramaSesiones[i]?.fechaHoraInicio || new Date()
+          cuotas.push({
+            numero: numeroCuota++,
+            concepto: `${nombreEsp} - Sesión ${i + 1}`,
+            fechaCargo: fechaSesion,
+            fechaVencimiento: fechaSesion,
+            importe: detalle.importe_sesion
+          })
+        }
+      }
+    }
+  }
+
+  // REGULAR
+  if (detallesRegular.length > 0) {
+    const totalMensualRegular = detallesRegular.reduce((sum, d) => sum + d.importe_sesion, 0)
+
+    if (tipoPagoRegular.value === 'contado') {
+      // Pago único al contado (suma de todos los meses)
+      // Calcular cantidad de meses
+      let totalMeses = 0
+      for (const detalle of detallesRegular) {
+        if (detalle.fecha_inicio && detalle.fecha_fin) {
+          const inicio = new Date(detalle.fecha_inicio + 'T00:00:00')
+          const fin = new Date(detalle.fecha_fin + 'T00:00:00')
+          const meses = Math.max(1, Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24 * 30)))
+          totalMeses = Math.max(totalMeses, meses)
+        }
+      }
+
+      const fechaInicio = detallesRegular[0].fecha_inicio
+      const fecha = fechaInicio ? new Date(fechaInicio + 'T00:00:00') : new Date()
+      cuotas.push({
+        numero: numeroCuota++,
+        concepto: `Pago único - Regular (${totalMeses} ${totalMeses === 1 ? 'mes' : 'meses'})`,
+        fechaCargo: fecha,
+        fechaVencimiento: fecha,
+        importe: totalMensualRegular * totalMeses
+      })
+    } else {
+      // Pagos mensuales
+      // Encontrar rango de fechas más amplio
+      let fechaInicioMin: Date | null = null
+      let fechaFinMax: Date | null = null
+
+      for (const detalle of detallesRegular) {
+        if (detalle.fecha_inicio) {
+          const inicio = new Date(detalle.fecha_inicio + 'T00:00:00')
+          if (!fechaInicioMin || inicio < fechaInicioMin) fechaInicioMin = inicio
+        }
+        if (detalle.fecha_fin) {
+          const fin = new Date(detalle.fecha_fin + 'T00:00:00')
+          if (!fechaFinMax || fin > fechaFinMax) fechaFinMax = fin
+        }
+      }
+
+      if (fechaInicioMin && fechaFinMax) {
+        const fechaActual = new Date(fechaInicioMin)
+        let mesNumero = 1
+
+        while (fechaActual <= fechaFinMax) {
+          const mesNombre = fechaActual.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })
+          cuotas.push({
+            numero: numeroCuota++,
+            concepto: `Mensualidad - ${mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1)}`,
+            fechaCargo: new Date(fechaActual),
+            fechaVencimiento: new Date(fechaActual.getFullYear(), fechaActual.getMonth(), 10), // Vence el día 10
+            importe: totalMensualRegular
+          })
+          mesNumero++
+          fechaActual.setMonth(fechaActual.getMonth() + 1)
+        }
+      }
+    }
+  }
+
+  // Ordenar por fecha
+  cuotas.sort((a, b) => a.fechaCargo.getTime() - b.fechaCargo.getTime())
+
+  // Renumerar
+  cuotas.forEach((c, i) => c.numero = i + 1)
+
+  cronogramaPagos.value = cuotas
+}
+
+// Watch para regenerar cronograma cuando cambien los tipos de pago
+watch([tipoPagoTaller, tipoPagoRegular], () => {
+  generarCronogramaPagos()
+})
+
 // Methods
 async function searchStudents() {
   if (!searchQuery.value || searchQuery.value.length < 2) {
@@ -336,16 +476,17 @@ async function searchStudents() {
       .from('personas')
       .select(`
         *,
-        alumnos (id_alumno)
+        alumnos!inner (id_alumno)
       `)
       .or(`nombres.ilike.%${searchQuery.value}%,ap_paterno.ilike.%${searchQuery.value}%,num_documento.ilike.%${searchQuery.value}%`)
       .limit(10)
 
     if (err) throw err
 
+    // Nota: id_alumno = id_persona en la nueva estructura
     searchResults.value = data?.map(p => ({
       ...p,
-      id_alumno: p.alumnos?.[0]?.id_alumno
+      id_alumno: p.id_persona // id_alumno ES id_persona
     })) || []
   } catch (err) {
     console.error('Error searching students:', err)
@@ -361,11 +502,12 @@ async function selectStudent(student: Persona & { id_alumno?: number }) {
   searchQuery.value = ''
 
   // Cargar datos del alumno en el formulario para edición
+  // IMPORTANTE: Mantener los valores originales tal cual (incluido NULL) para evitar detección de cambios falsos
   studentForm.value = {
     nombres: student.nombres,
     ap_paterno: student.ap_paterno,
     ap_materno: student.ap_materno || '',
-    id_tipo_documento: student.id_tipo_documento || 1,
+    id_tipo_documento: student.id_tipo_documento ?? 1, // Usar ?? en vez de || para mantener 0 si existe
     num_documento: student.num_documento || '',
     fecha_nacimiento: student.fecha_nacimiento || '',
     correo: student.correo || '',
@@ -374,10 +516,8 @@ async function selectStudent(student: Persona & { id_alumno?: number }) {
     direccion: student.direccion || ''
   }
 
-  // Cargar responsable si existe
-  if (student.id_alumno) {
-    await loadResponsable(student.id_alumno)
-  }
+  // Cargar responsable si existe (id_alumno = id_persona)
+  await loadResponsable(student.id_persona)
 }
 
 function startNewStudent() {
@@ -447,7 +587,7 @@ async function loadCatalogs() {
       supabase.from('tipos_documentos').select('*'),
       supabase.from('periodos').select('*').order('id_periodo', { ascending: false }),
       supabase.from('especialidades').select('*').order('nombre'),
-      supabase.from('profesores').select('id_profesor, id_especialidad, personas(nombres, ap_paterno)'),
+      supabase.from('profesores').select('id_profesor, personas!id_profesor(nombres, ap_paterno)'),
       supabase.from('frecuencias').select('*'),
       supabase.from('horarios').select('*').order('hora_inicio'),
       supabase.from('parentescos').select('*')
@@ -458,7 +598,7 @@ async function loadCatalogs() {
     especialidades.value = especialidadesData.data || []
     profesores.value = profesoresData.data?.filter(p => p.personas).map(p => ({
       id_profesor: p.id_profesor,
-      id_especialidad: p.id_especialidad || null,
+      id_especialidad: null, // Profesores pueden enseñar múltiples especialidades
       persona: (Array.isArray(p.personas) ? p.personas[0] : p.personas) as { nombres: string; ap_paterno: string }
     })) || []
     frecuencias.value = frecuenciasData.data || []
@@ -477,6 +617,10 @@ async function loadCatalogs() {
 function nextStep() {
   if (currentStep.value < totalSteps) {
     currentStep.value++
+    // Generar cronograma de pagos al entrar al paso 3
+    if (currentStep.value === 3) {
+      generarCronogramaPagos()
+    }
   }
 }
 
@@ -490,6 +634,12 @@ function getFullName(persona: { nombres: string; ap_paterno: string; ap_materno?
   return `${persona.nombres} ${persona.ap_paterno}${persona.ap_materno ? ' ' + persona.ap_materno : ''}`
 }
 
+function getTipoDocumentoNombre(id_tipo_documento: number | null): string {
+  if (!id_tipo_documento) return ''
+  const tipo = tiposDocumentos.value.find(t => t.id_tipo_documento === id_tipo_documento)
+  return tipo?.nombre || ''
+}
+
 function formatDate(dateString: string): string {
   if (!dateString) return '-'
   const date = new Date(dateString)
@@ -497,6 +647,12 @@ function formatDate(dateString: string): string {
 }
 
 async function submitMatricula() {
+  // Confirmar antes de proceder
+  const confirmacion = confirm('¿Está seguro de confirmar esta matrícula? Una vez confirmada, se crearán los registros y cronogramas correspondientes.')
+  if (!confirmacion) {
+    return
+  }
+
   loading.value = true
   error.value = null
 
@@ -508,21 +664,29 @@ async function submitMatricula() {
     if (selectedStudent.value) {
       // Actualizar datos de la persona existente
       personaId = selectedStudent.value.id_persona
-      alumnoId = selectedStudent.value.id_alumno!
+      alumnoId = selectedStudent.value.id_persona // id_alumno ES id_persona
 
-      // Validar documento si cambió
-      if (studentForm.value.id_tipo_documento && studentForm.value.num_documento) {
-        if (studentForm.value.id_tipo_documento !== selectedStudent.value.id_tipo_documento ||
-          studentForm.value.num_documento !== selectedStudent.value.num_documento) {
-          const validacion = await validarDocumentoDuplicado({
-            idTipoDocumento: studentForm.value.id_tipo_documento,
-            numDocumento: studentForm.value.num_documento,
-            excludeIdPersona: personaId
-          })
+      // Validar documento si cambió (comparación segura manejando NULL y conversión a String)
+      const tipoDocOriginal = selectedStudent.value.id_tipo_documento ?? null
+      const numDocOriginal = selectedStudent.value.num_documento?.trim() || ''
+      const tipoDocNuevo = studentForm.value.id_tipo_documento ?? null
+      const numDocNuevo = studentForm.value.num_documento?.trim() || ''
 
-          if (validacion.existe) {
-            throw new Error(`Ya existe otra persona con este tipo y número de documento (${studentForm.value.num_documento})`)
-          }
+      // Normalizar: si ambos son null/undefined/vacío, considerarlos iguales
+      const tiposCambiaron = (tipoDocOriginal ?? 0) !== (tipoDocNuevo ?? 0)
+      const numerosCambiaron = numDocOriginal !== numDocNuevo
+
+      const documentoCambio = tiposCambiaron || numerosCambiaron
+
+      if (documentoCambio && numDocNuevo) {
+        const validacion = await validarDocumentoDuplicado({
+          idTipoDocumento: tipoDocNuevo,
+          numDocumento: numDocNuevo,
+          excludeIdPersona: personaId
+        })
+
+        if (validacion.existe) {
+          throw new Error(`Ya existe otra persona con este tipo y número de documento (${numDocNuevo})`)
         }
       }
 
@@ -579,18 +743,16 @@ async function submitMatricula() {
       if (personaError) throw personaError
       personaId = newPersona.id_persona
 
-      // Create alumno
-      const { data: newAlumno, error: alumnoError } = await supabase
+      // Create alumno (id_alumno = id_persona)
+      const { error: alumnoError } = await supabase
         .from('alumnos')
         .insert({
-          id_persona: personaId,
+          id_alumno: personaId, // id_alumno ES id_persona
           id_institucion: 1 // TODO: Get from user context
         })
-        .select()
-        .single()
 
       if (alumnoError) throw alumnoError
-      alumnoId = newAlumno.id_alumno
+      alumnoId = personaId // alumnoId ES personaId
     }
 
     // Step 2: Create or update responsable if needed
@@ -651,12 +813,69 @@ async function submitMatricula() {
           .insert({
             id_alumno: alumnoId,
             id_persona_responsable: responsablePersonaId,
-            id_parentesco: responsableForm.value.id_parentesco
+            id_parentesco: responsableForm.value.id_parentesco ?? null
           })
       }
     }
 
-    // Step 3: Create matricula
+    // Step 3: Validar matrículas duplicadas
+    // Obtener matrículas existentes del alumno en el período seleccionado
+    const { data: matriculasExistentes, error: matriculasError } = await supabase
+      .from('matriculas')
+      .select(`
+        id_matricula,
+        matriculas_detalles (
+          id_especialidad,
+          estado
+        )
+      `)
+      .eq('id_alumno', alumnoId)
+      .eq('id_periodo', periodoSeleccionado.value)
+      .eq('estado', 'activo')
+
+    if (matriculasError) throw matriculasError
+
+    // Validar según tipo de especialidad
+    for (const detalle of matriculaDetalles.value) {
+      if (!detalle.id_especialidad) continue
+
+      const especialidad = especialidades.value.find(e => e.id_especialidad === detalle.id_especialidad)
+      if (!especialidad) continue
+
+      if (especialidad.tipo === 'regular') {
+        // CASO 1: No permitir más de una matrícula regular por período
+        const tieneMatriculaRegular = matriculasExistentes?.some(m =>
+          m.matriculas_detalles?.some(d =>
+            d.estado === 'activo' &&
+            especialidades.value.find(e => e.id_especialidad === d.id_especialidad)?.tipo === 'regular'
+          )
+        )
+
+        if (tieneMatriculaRegular) {
+          throw new Error(
+            `El alumno ya tiene una matrícula de tipo REGULAR activa en el período ${periodos.value.find(p => p.id_periodo === periodoSeleccionado.value)?.nombre}. ` +
+            `No se permite más de una matrícula regular por período.`
+          )
+        }
+      } else if (especialidad.tipo === 'taller') {
+        // CASO 2: No permitir duplicar el mismo taller en el mismo período
+        const tieneTallerDuplicado = matriculasExistentes?.some(m =>
+          m.matriculas_detalles?.some(d =>
+            d.estado === 'activo' &&
+            d.id_especialidad === detalle.id_especialidad
+          )
+        )
+
+        if (tieneTallerDuplicado) {
+          throw new Error(
+            `El alumno ya está matriculado en el taller "${especialidad.nombre}" para el período ${periodos.value.find(p => p.id_periodo === periodoSeleccionado.value)?.nombre}. ` +
+            `No se permite duplicar el mismo taller en el mismo período.`
+          )
+        }
+      }
+    }
+
+    // Step 4: Create matricula
     const { data: matricula, error: matriculaError } = await supabase
       .from('matriculas')
       .insert({
@@ -666,9 +885,10 @@ async function submitMatricula() {
         celular_alumno: studentForm.value.celular || null,
         correo_alumno: studentForm.value.correo || null,
         direccion_alumno: studentForm.value.direccion || null,
-        id_persona_responsable: responsablePersonaId,
-        celular_responsable: hasResponsable.value ? responsableForm.value.celular : null,
-        correo_responsable: hasResponsable.value ? responsableForm.value.correo : null,
+        id_persona_responsable: responsablePersonaId ?? null,
+        celular_responsable: hasResponsable.value ? (responsableForm.value.celular || null) : null,
+        correo_responsable: hasResponsable.value ? (responsableForm.value.correo || null) : null,
+        direccion_responsable: null,
         estado: 'activo'
       })
       .select()
@@ -676,15 +896,15 @@ async function submitMatricula() {
 
     if (matriculaError) throw matriculaError
 
-    // Step 4: Create multiple matricula_detalles
+    // Step 5: Create multiple matricula_detalles
     const detallesParaInsertar = matriculaDetalles.value
       .filter(d => d.id_especialidad !== null) // Solo detalles con especialidad
       .map(detalle => ({
         id_matricula: matricula.id_matricula,
         id_especialidad: detalle.id_especialidad,
         id_profesor: detalle.id_profesor,
-        id_frecuencia: detalle.id_frecuencia,
-        id_horario: detalle.id_horario,
+        id_frecuencia: detalle.id_frecuencia ?? null,
+        id_horario: detalle.id_horario ?? null,
         fecha_inicio: detalle.fecha_inicio || null,
         fecha_fin: detalle.fecha_fin || null, // Para tipo regular
         cant_sesiones: detalle.cant_sesiones,
@@ -701,7 +921,7 @@ async function submitMatricula() {
 
       if (detalleError) throw detalleError
 
-      // Step 5: Generar cronogramas de asistencias SOLO para tipo TALLER
+      // Step 6: Generar cronogramas de asistencias SOLO para tipo TALLER
       const cronogramasParaInsertar: any[] = []
 
       detallesInsertados?.forEach((detalleInsertado, index) => {
@@ -735,11 +955,35 @@ async function submitMatricula() {
       }
     }
 
+    // Step 7: Insertar cronograma de pagos
+    if (cronogramaPagos.value.length > 0) {
+      const pagosParaInsertar = cronogramaPagos.value.map(cuota => ({
+        id_matricula: matricula.id_matricula,
+        fecha_cargo: cuota.fechaCargo.toISOString().split('T')[0],
+        fecha_vencimiento: cuota.fechaVencimiento.toISOString().split('T')[0],
+        importe: cuota.importe,
+        estado: 'pendiente'
+      }))
+
+      const { error: pagosError } = await supabase
+        .from('cronogramas_pagos')
+        .insert(pagosParaInsertar)
+
+      if (pagosError) throw pagosError
+    }
+
     // Success - redirect to matriculas list
     router.push('/matriculas')
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Error al crear matrícula'
+    if (err instanceof Error) {
+      error.value = err.message
+    } else if (typeof err === 'object' && err !== null) {
+      error.value = JSON.stringify(err)
+    } else {
+      error.value = 'Error al crear matrícula'
+    }
     console.error('Error creating matricula:', err)
+    console.error('Error details:', JSON.stringify(err, null, 2))
   } finally {
     loading.value = false
   }
@@ -754,21 +998,30 @@ loadCatalogs()
     <!-- Header -->
     <div class="mb-6">
       <div class="flex items-center gap-2 mb-2">
-        <router-link to="/matriculas" class="btn btn-ghost btn-sm btn-circle">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <router-link to="/matriculas" class="btn btn-ghost btn-sm btn-circle flex-shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
         </router-link>
-        <h1 class="text-2xl font-bold">Asistente de Matrícula</h1>
+        <h1 class="text-lg sm:text-2xl font-bold">Asistente de Matrícula</h1>
       </div>
-      <p class="text-base-content/60">Complete los pasos para registrar una nueva matrícula.</p>
+      <p class="text-sm sm:text-base text-base-content/60">Complete los pasos para registrar una nueva matrícula.</p>
     </div>
 
     <!-- Progress Steps -->
-    <ul class="steps steps-horizontal w-full mb-8">
-      <li class="step" :class="{ 'step-primary': currentStep >= 1 }">Identificación</li>
-      <li class="step" :class="{ 'step-primary': currentStep >= 2 }">Detalles</li>
-      <li class="step" :class="{ 'step-primary': currentStep >= 3 }">Confirmación</li>
+    <ul class="steps steps-horizontal w-full mb-6 sm:mb-8 text-xs sm:text-sm">
+      <li class="step" :class="{ 'step-primary': currentStep >= 1 }">
+        <span class="hidden sm:inline">Identificación</span>
+        <span class="sm:hidden">1. Identif.</span>
+      </li>
+      <li class="step" :class="{ 'step-primary': currentStep >= 2 }">
+        <span class="hidden sm:inline">Detalles</span>
+        <span class="sm:hidden">2. Detalles</span>
+      </li>
+      <li class="step" :class="{ 'step-primary': currentStep >= 3 }">
+        <span class="hidden sm:inline">Confirmación</span>
+        <span class="sm:hidden">3. Confirm.</span>
+      </li>
     </ul>
 
     <!-- Error Alert -->
@@ -819,7 +1072,10 @@ loadCatalogs()
                   </div>
                   <div>
                     <div class="font-semibold">{{ getFullName(result) }}</div>
-                    <div class="text-sm text-base-content/60">{{ result.num_documento || 'Sin documento' }}</div>
+                    <div class="text-sm text-base-content/60">
+                      <span v-if="result.id_tipo_documento" class="font-medium">{{ getTipoDocumentoNombre(result.id_tipo_documento) }}:</span>
+                      {{ result.num_documento || 'Sin documento' }}
+                    </div>
                   </div>
                 </div>
                 <span v-if="result.id_alumno" class="badge badge-success badge-sm">Registrado</span>
@@ -883,8 +1139,8 @@ loadCatalogs()
                 <input v-model="studentForm.ap_materno" type="text" class="input input-bordered" />
               </div>
               <div class="form-control w-full flex flex-col">
-                <label class="label"><span class="label-text">Tipo Documento</span></label>
-                <select v-model="studentForm.id_tipo_documento" class="select select-bordered">
+                <label class="label"><span class="label-text">Tipo Documento <span class="text-red-500">*</span></span></label>
+                <select v-model="studentForm.id_tipo_documento" class="select select-bordered" required>
                   <option v-for="tipo in tiposDocumentos" :key="tipo.id_tipo_documento" :value="tipo.id_tipo_documento">
                     {{ tipo.nombre }}
                   </option>
@@ -1012,18 +1268,11 @@ loadCatalogs()
 
               <div class="form-control w-full flex flex-col">
                 <label class="label">
-                  <span class="label-text">Profesor</span>
-                  <span v-if="detalle.id_especialidad && getProfesoresFiltrados(detalle.id_especialidad).length === 0" class="label-text-alt text-warning">
-                    Sin profesores
-                  </span>
+                  <span class="label-text">Profesor <span class="text-error">*</span></span>
                 </label>
-                <select
-                  v-model="detalle.id_profesor"
-                  class="select select-bordered"
-                  :disabled="!detalle.id_especialidad || getProfesoresFiltrados(detalle.id_especialidad).length === 0"
-                >
-                  <option :value="null">{{ !detalle.id_especialidad ? 'Primero seleccione especialidad' : 'Seleccionar profesor' }}</option>
-                  <option v-for="prof in getProfesoresFiltrados(detalle.id_especialidad)" :key="prof.id_profesor" :value="prof.id_profesor">
+                <select v-model="detalle.id_profesor" class="select select-bordered">
+                  <option :value="null">Seleccionar profesor</option>
+                  <option v-for="prof in profesores" :key="prof.id_profesor" :value="prof.id_profesor">
                     {{ prof.persona.nombres }} {{ prof.persona.ap_paterno }}
                   </option>
                 </select>
@@ -1032,7 +1281,7 @@ loadCatalogs()
               <!-- Campos para tipo TALLER -->
               <template v-if="getTipoEspecialidad(detalle.id_especialidad) === 'taller'">
                 <div class="form-control w-full flex flex-col">
-                  <label class="label"><span class="label-text">Frecuencia</span></label>
+                  <label class="label"><span class="label-text">Frecuencia <span class="text-error">*</span></span></label>
                   <select v-model="detalle.id_frecuencia" class="select select-bordered">
                     <option :value="null">Seleccionar frecuencia</option>
                     <option v-for="freq in frecuencias" :key="freq.id_frecuencia" :value="freq.id_frecuencia">
@@ -1043,7 +1292,7 @@ loadCatalogs()
 
                 <div class="form-control w-full flex flex-col">
                   <label class="label">
-                    <span class="label-text">Horario</span>
+                    <span class="label-text">Horario <span class="text-error">*</span></span>
                     <span v-if="detalle.id_horario" class="label-text-alt">{{ detalle.minutos_por_sesion }} min</span>
                   </label>
                   <select
@@ -1059,17 +1308,17 @@ loadCatalogs()
                 </div>
 
                 <div class="form-control w-full flex flex-col">
-                  <label class="label"><span class="label-text">Fecha Inicio</span></label>
+                  <label class="label"><span class="label-text">Fecha Inicio <span class="text-error">*</span></span></label>
                   <input v-model="detalle.fecha_inicio" type="date" class="input input-bordered" />
                 </div>
 
                 <div class="form-control w-full flex flex-col">
-                  <label class="label"><span class="label-text">Cantidad de Sesiones</span></label>
+                  <label class="label"><span class="label-text">Cantidad de Sesiones <span class="text-error">*</span></span></label>
                   <input v-model.number="detalle.cant_sesiones" type="number" min="1" class="input input-bordered" />
                 </div>
 
                 <div class="form-control w-full flex flex-col">
-                  <label class="label"><span class="label-text">Importe por Sesión (S/)</span></label>
+                  <label class="label"><span class="label-text">Importe por Sesión (S/) <span class="text-error">*</span></span></label>
                   <input v-model.number="detalle.importe_sesion" type="number" min="0" step="0.01" class="input input-bordered" />
                 </div>
               </template>
@@ -1077,17 +1326,17 @@ loadCatalogs()
               <!-- Campos para tipo REGULAR -->
               <template v-else-if="getTipoEspecialidad(detalle.id_especialidad) === 'regular'">
                 <div class="form-control w-full flex flex-col">
-                  <label class="label"><span class="label-text">Fecha Inicio</span></label>
+                  <label class="label"><span class="label-text">Fecha Inicio <span class="text-error">*</span></span></label>
                   <input v-model="detalle.fecha_inicio" type="date" class="input input-bordered" />
                 </div>
 
                 <div class="form-control w-full flex flex-col">
-                  <label class="label"><span class="label-text">Fecha Fin</span></label>
+                  <label class="label"><span class="label-text">Fecha Fin <span class="text-error">*</span></span></label>
                   <input v-model="detalle.fecha_fin" type="date" class="input input-bordered" />
                 </div>
 
                 <div class="form-control w-full flex flex-col">
-                  <label class="label"><span class="label-text">Importe Mensual (S/)</span></label>
+                  <label class="label"><span class="label-text">Importe Mensual (S/) <span class="text-error">*</span></span></label>
                   <input v-model.number="detalle.importe_sesion" type="number" min="0" step="0.01" class="input input-bordered" />
                 </div>
               </template>
@@ -1241,6 +1490,85 @@ loadCatalogs()
             </div>
           </div>
 
+          <!-- Cronograma de Pagos -->
+          <div class="bg-base-200 rounded-box p-4">
+            <h3 class="font-semibold mb-4">Cronograma de Pagos</h3>
+
+            <!-- Opciones de tipo de pago -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <!-- Tipo pago Taller -->
+              <div v-if="matriculaDetalles.some(d => d.id_especialidad && getTipoEspecialidad(d.id_especialidad) === 'taller')" class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">Forma de pago - Talleres</span>
+                </label>
+                <div class="flex gap-2">
+                  <label class="label cursor-pointer gap-2">
+                    <input type="radio" v-model="tipoPagoTaller" value="contado" class="radio radio-primary radio-sm" />
+                    <span class="label-text">Al contado</span>
+                  </label>
+                  <label class="label cursor-pointer gap-2">
+                    <input type="radio" v-model="tipoPagoTaller" value="cuotas" class="radio radio-primary radio-sm" />
+                    <span class="label-text">Por sesión</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Tipo pago Regular -->
+              <div v-if="matriculaDetalles.some(d => d.id_especialidad && getTipoEspecialidad(d.id_especialidad) === 'regular')" class="form-control">
+                <label class="label">
+                  <span class="label-text font-semibold">Forma de pago - Regular</span>
+                </label>
+                <div class="flex gap-2">
+                  <label class="label cursor-pointer gap-2">
+                    <input type="radio" v-model="tipoPagoRegular" value="contado" class="radio radio-info radio-sm" />
+                    <span class="label-text">Al contado</span>
+                  </label>
+                  <label class="label cursor-pointer gap-2">
+                    <input type="radio" v-model="tipoPagoRegular" value="cuotas" class="radio radio-info radio-sm" />
+                    <span class="label-text">Mensual</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabla de cronograma -->
+            <div v-if="cronogramaPagos.length > 0" class="overflow-x-auto">
+              <table class="table table-sm table-zebra">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Concepto</th>
+                    <th>Fecha Cargo</th>
+                    <th>Vencimiento</th>
+                    <th class="text-right">Importe</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="cuota in cronogramaPagos" :key="cuota.numero">
+                    <td>{{ cuota.numero }}</td>
+                    <td>{{ cuota.concepto }}</td>
+                    <td>{{ cuota.fechaCargo.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' }) }}</td>
+                    <td>{{ cuota.fechaVencimiento.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' }) }}</td>
+                    <td class="text-right font-semibold">S/ {{ cuota.importe.toFixed(2) }}</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr class="font-bold text-primary">
+                    <td colspan="4" class="text-right">TOTAL:</td>
+                    <td class="text-right">S/ {{ cronogramaPagos.reduce((sum, c) => sum + c.importe, 0).toFixed(2) }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div v-else class="alert alert-info text-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>No hay cuotas generadas. Verifique que los detalles académicos estén completos.</span>
+            </div>
+          </div>
+
           <!-- Responsable Summary -->
           <div v-if="hasResponsable && responsableForm.nombres" class="bg-base-200 rounded-box p-4">
             <h3 class="font-semibold mb-3">Responsable/Apoderado</h3>
@@ -1258,19 +1586,28 @@ loadCatalogs()
         </div>
 
         <!-- Navigation Buttons -->
-        <div class="card-actions justify-between mt-6 pt-4 border-t">
-          <button v-if="currentStep > 1" class="btn btn-ghost" @click="prevStep">
+        <div class="card-actions flex-col sm:flex-row justify-between mt-6 pt-4 border-t gap-2">
+          <button v-if="currentStep > 1" class="btn btn-ghost btn-sm sm:btn-md w-full sm:w-auto" @click="prevStep">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
             Anterior
           </button>
-          <div v-else></div>
+          <div v-else class="hidden sm:block"></div>
 
-          <button v-if="currentStep < totalSteps" class="btn btn-primary"
+          <button v-if="currentStep < totalSteps" class="btn btn-primary btn-sm sm:btn-md w-full sm:w-auto"
             :disabled="(currentStep === 1 && !canProceedStep1) || (currentStep === 2 && !canProceedStep2)"
             @click="nextStep">
             Siguiente
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
           </button>
-          <button v-else class="btn btn-primary" :class="{ 'loading': loading }" :disabled="loading"
+          <button v-else class="btn btn-primary btn-sm sm:btn-md w-full sm:w-auto" :class="{ 'loading': loading }" :disabled="loading"
             @click="submitMatricula">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
             Confirmar Matrícula
           </button>
         </div>

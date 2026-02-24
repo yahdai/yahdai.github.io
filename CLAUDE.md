@@ -17,11 +17,11 @@ Sistema de gestión para academia de música **Yahdai Academia**.
 |------|------------|--------|
 | `/` | DashboardPage | Placeholder |
 | `/login` | LoginPage | Funcional |
-| `/matriculas` | MatriculasPage | Funcional (lista + filtros + paginación) |
+| `/matriculas` | MatriculasPage | Funcional (lista + filtros + paginación + ver + eliminar + PDF) |
 | `/matriculas/nueva` | NuevaMatriculaPage | Funcional (wizard 3 pasos) |
 | `/estudiantes` | EstudiantesPage | Placeholder |
 | `/pagos` | PagosPage | Placeholder |
-| `/asistencias` | AsistenciasPage | Placeholder |
+| `/asistencias` | AsistenciasPage | Funcional (escaneo QR/DNI + marcado rápido) |
 | `/catalogos` | CatalogosPage | Placeholder |
 
 ## Estructura de Archivos
@@ -34,15 +34,18 @@ src/
 │   ├── auth/LoginPage.vue
 │   ├── dashboard/DashboardPage.vue
 │   ├── matriculas/
-│   │   ├── MatriculasPage.vue      # Lista de matrículas
-│   │   └── NuevaMatriculaPage.vue  # Wizard de nueva matrícula
+│   │   ├── MatriculasPage.vue        # Lista de matrículas
+│   │   ├── NuevaMatriculaPage.vue    # Wizard de nueva matrícula
+│   │   └── MatriculaViewModal.vue    # Modal de visualización y PDF
 │   ├── estudiantes/EstudiantesPage.vue
 │   ├── pagos/PagosPage.vue
-│   ├── asistencias/AsistenciasPage.vue
+│   ├── asistencias/AsistenciasPage.vue # Marcado de asistencias
 │   └── catalogos/CatalogosPage.vue
 ├── services/
 │   ├── supabase.ts            # Cliente Supabase
-│   └── matriculas.ts          # CRUD de matrículas
+│   ├── matriculas.ts          # CRUD de matrículas
+│   ├── asistencias.ts         # Búsqueda y marcado de asistencias
+│   └── catalogos.ts           # Validación de documentos
 ├── stores/
 │   └── auth.ts                # Pinia store para autenticación
 ├── types/
@@ -67,24 +70,81 @@ src/
 </style>
 ```
 
-### 2. Base de Datos
+### 2. Diseño Responsive
+**La aplicación es completamente responsive** usando breakpoints de Tailwind CSS:
+
+**Breakpoints**:
+- `sm:` - 640px+ (móviles en horizontal)
+- `md:` - 768px+ (tablets)
+- `lg:` - 1024px+ (desktop)
+- `xl:` - 1280px+ (desktop grande)
+
+**Patrones Comunes**:
+```vue
+<!-- Texto responsive -->
+<h1 class="text-lg sm:text-xl lg:text-2xl">Título</h1>
+
+<!-- Layout responsive (columnas) -->
+<div class="flex flex-col sm:flex-row gap-2">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+<!-- Botones responsive -->
+<button class="btn btn-sm sm:btn-md w-full sm:w-auto">
+
+<!-- Padding/spacing responsive -->
+<div class="p-3 sm:p-4 lg:p-6">
+<div class="space-y-2 sm:space-y-4">
+
+<!-- Visibilidad condicional -->
+<div class="hidden md:block">Solo desktop</div>
+<div class="md:hidden">Solo mobile</div>
+```
+
+**Componentes Responsive**:
+- **MainLayout**:
+  - Sidebar drawer en mobile, fixed en desktop
+  - Header con logo, nombre de academia y estado
+  - Tooltips en items cuando está colapsado
+  - Footer con versión y estado del sistema
+  - Animaciones hover y transiciones suaves
+- **Navbar**:
+  - Badge "Beta" y texto con degradado
+  - Indicador de notificaciones (3 pendientes)
+  - Dropdown de usuario con opciones de perfil, configuración y logout
+  - Botón de colapsar con iconos que cambian según estado
+- **Tablas**: Cards en mobile (`md:hidden` / `hidden md:block`)
+- **Forms**: Grid 1 columna en mobile, 2+ en desktop
+- **Botones**: Full-width en mobile, auto en desktop
+
+### 3. Base de Datos
 - **Nombres de tablas**: Plural en español (`matriculas`, `alumnos`, `personas`)
 - **IDs**: `serial` (int4 autoincrement), nombrados como `id_tabla` (ej: `id_matricula`)
+- **Relación personas-alumnos/profesores**: `alumnos.id_alumno` y `profesores.id_profesor` son **PK y FK** a `personas.id_persona` (relación 1:1, sin campo `id_persona` separado)
 - **Timestamps**: Timezone `America/Lima`
 - **Tipos de documento SUNAT**: 1=DNI, 4=Carnet Extranjería, 6=RUC, 7=Pasaporte
 - **Validación de documentos**: Constraint UNIQUE en `(id_tipo_documento, num_documento)` - no se permiten duplicados
 - **Validación en código**: Usar `validarDocumentoDuplicado()` de `services/catalogos.ts` antes de crear/editar personas
 
-### 3. Relaciones Clave
+### 4. Relaciones Clave
 ```
 personas (base)
+    ║ 1:1 (id_persona = id_alumno)
     ↓
 alumnos ←→ matriculas → matriculas_detalles
     ↓           ↓              ↓
 responsables  periodos    especialidades
+
+personas
+    ║ 1:1 (id_persona = id_profesor)
+    ↓
+profesores
 ```
 
-### 4. Estados
+**IMPORTANTE**:
+- `alumnos.id_alumno` **ES** `personas.id_persona` (PK y FK)
+- `profesores.id_profesor` **ES** `personas.id_persona` (PK y FK)
+
+### 5. Estados
 - **Matrículas**: `activo`, `finalizado`, `cancelado`
 - **Pagos**: `pendiente`, `pagado`, `vencido`, `anulado`
 - **Asistencias**: `pendiente`, `presente`, `tardanza`, `ausente`, `justificado`
@@ -99,8 +159,11 @@ personas: id_persona, nombres, ap_paterno, ap_materno, id_tipo_documento,
 -- CONSTRAINT: (id_tipo_documento, num_documento) UNIQUE
 -- No se permiten documentos duplicados del mismo tipo
 
--- Alumnos
-alumnos: id_alumno, id_institucion, id_persona
+-- Alumnos (id_alumno ES id_persona, relación 1:1)
+alumnos: id_alumno PK FK->personas(id_persona), id_institucion
+
+-- Profesores (id_profesor ES id_persona, relación 1:1)
+profesores: id_profesor PK FK->personas(id_persona), id_institucion, fecha_registro
 
 -- Matrículas
 matriculas: id_matricula, id_institucion, id_periodo, id_alumno,
@@ -246,19 +309,50 @@ Ver `.github/workflows/deploy.yml`.
 
 1. **Estudiantes**: Crear CRUD basado en `personas` + `alumnos`
 2. **Pagos**: Usar `cronogramas_pagos` + `depositos`
-3. **Asistencias**: Usar `cronogramas_asistencias` + `asistencias`
-4. **Catálogos**: CRUD para `especialidades`, `frecuencias`, `horarios`, `periodos`
+3. **Catálogos**: CRUD para `especialidades`, `frecuencias`, `horarios`, `periodos`
 
-5. **TODO**: El `id_institucion` está hardcodeado como `1`. Implementar selección de institución según el usuario logueado.
+4. **TODO**: El `id_institucion` está hardcodeado como `1`. Implementar selección de institución según el usuario logueado.
+
+## Lógica de Asistencias
+
+### Búsqueda de Alumno
+- Búsqueda por número de documento (DNI, RUC, etc.) o por nombre/apellidos
+- Compatible con escaneo de código QR
+- Mínimo 3 caracteres para buscar
+- Si hay un solo resultado, se selecciona automáticamente
+- Si hay múltiples coincidencias, muestra lista de resultados para que el usuario seleccione
+- Muestra avatar, nombre completo, documento y estado de pagos
+
+### Marcado de Sesiones
+- **Sesiones Bloqueadas**: No se pueden marcar si faltan más de 15 minutos para iniciar (sesiones futuras)
+- **Sesiones Próximas**: Se pueden marcar 15 minutos antes del inicio
+- **Sesiones en Curso**: Se pueden marcar durante la sesión (entre hora inicio y fin)
+- **Sesiones Finalizadas (Pasadas)**: Se pueden marcar manualmente con cualquier estado (presente, tardanza, ausente, justificado) para flexibilidad en correcciones
+- Muestra todas las sesiones del alumno agrupadas por fecha, con foco en las sesiones de "HOY"
+
+### Estados de Asistencia
+- **Presente**: Llegó a tiempo (verde)
+- **Tardanza**: Llegó tarde pero dentro del horario (amarillo)
+- **Ausente**: No asistió o sesión finalizada sin marcar (rojo)
+- **Justificado**: Falta justificada (gris)
+- **Pendiente**: Aún no se ha marcado (estado inicial)
+
+### Cambio de Estado
+- **Asistencias ya marcadas**: Se puede cambiar el estado usando el dropdown "Cambiar"
+- **Sesiones pasadas sin marcar**: Incluyen dropdown "Más opciones" para marcar con cualquier estado (presente, tardanza, ausente, justificado)
+- Útil para correcciones retroactivas o actualizaciones
+
+### Interfaz en Tiempo Real
+- Actualización de hora cada 30 segundos
+- Indicador de "Escáner Activo"
+- Muestra último acceso correcto
+- Estados visuales según horario de sesión (EN CURSO, PRÓXIMO, FINALIZADO, TARDE)
 
 ## Lógica de Matrículas
 
-### Filtrado de Profesores por Especialidad
-- En el formulario de matrícula, el campo de profesor se filtra según la especialidad seleccionada
-- Solo se muestran profesores que enseñan la especialidad elegida (campo `id_especialidad` en tabla `profesores`)
-- Profesores sin especialidad asignada (`id_especialidad = null`) se muestran para todas las especialidades
-- Al cambiar de especialidad, el profesor se resetea automáticamente si no enseña la nueva especialidad
-- Si solo hay un profesor disponible para la especialidad, se auto-selecciona
+### Profesores
+- Los profesores pueden enseñar múltiples especialidades
+- En el formulario de matrícula, se muestran todos los profesores disponibles (sin filtrar por especialidad)
 
 ### Actualización de Datos
 - Al seleccionar un alumno existente, se cargan todos sus datos para actualización

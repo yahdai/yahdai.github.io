@@ -81,26 +81,23 @@ export interface Especialidad {
 }
 
 export interface Alumno {
-  id_alumno: number
+  id_alumno: number // PK y FK a personas.id_persona
   id_institucion: number
-  id_persona: number
   created_at: string
   updated_at: string
   // Relaciones
-  persona?: Persona
+  persona?: Persona // Relación 1:1 con personas (id_alumno = id_persona)
   institucion?: Institucion
 }
 
 export interface Profesor {
-  id_profesor: number
+  id_profesor: number // PK y FK a personas.id_persona
   id_institucion: number
-  id_persona: number
-  id_especialidad: number | null
   fecha_registro: string
   created_at: string
   updated_at: string
   // Relaciones
-  persona?: Persona
+  persona?: Persona // Relación 1:1 con personas (id_profesor = id_persona)
   especialidad?: Especialidad
 }
 

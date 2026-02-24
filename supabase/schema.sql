@@ -82,7 +82,9 @@ create table personas (
   sexo char(1) check (sexo in ('M', 'F')),
   direccion varchar(200),
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
+  updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
+  -- Constraint: No permitir documentos duplicados del mismo tipo
+  constraint personas_tipo_documento_num_documento_unique unique (id_tipo_documento, num_documento)
 );
 
 -- Usuarios (vinculado a Supabase Auth)
@@ -105,22 +107,21 @@ create table especialidades (
 -- ============================================
 -- ALUMNOS Y PROFESORES
 -- ============================================
+-- IMPORTANTE: id_alumno e id_profesor son PK y FK a personas
+-- Relación 1:1 entre personas y alumnos/profesores
 
--- Alumnos
+-- Alumnos (id_alumno es la misma persona)
 create table alumnos (
-  id_alumno serial primary key,
+  id_alumno integer primary key references personas(id_persona) on delete cascade,
   id_institucion integer references instituciones(id_institucion) on delete cascade,
-  id_persona integer references personas(id_persona) on delete cascade,
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
   updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
 );
 
--- Profesores
+-- Profesores (id_profesor es la misma persona)
 create table profesores (
-  id_profesor serial primary key,
+  id_profesor integer primary key references personas(id_persona) on delete cascade,
   id_institucion integer references instituciones(id_institucion) on delete cascade,
-  id_persona integer references personas(id_persona) on delete cascade,
-  id_especialidad integer references especialidades(id_especialidad),
   fecha_registro date default current_date,
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
   updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
@@ -261,8 +262,8 @@ create table asistencias (
 -- ÍNDICES
 -- ============================================
 
+create index idx_personas_documento on personas(id_tipo_documento, num_documento) where num_documento is not null;
 create index idx_alumnos_institucion on alumnos(id_institucion);
-create index idx_alumnos_persona on alumnos(id_persona);
 create index idx_profesores_institucion on profesores(id_institucion);
 create index idx_matriculas_alumno on matriculas(id_alumno);
 create index idx_matriculas_periodo on matriculas(id_periodo);

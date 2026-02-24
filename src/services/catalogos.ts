@@ -4,7 +4,6 @@ import type { Institucion, Periodo, Especialidad, Frecuencia, Horario, Profesor,
 // Tipo para profesor con relaciones
 export interface ProfesorConRelaciones extends Profesor {
   personas: Persona
-  especialidades: Especialidad | null
 }
 
 // ============================================
@@ -306,8 +305,7 @@ export async function getProfesores(idInstitucion?: number): Promise<ProfesorCon
     .from('profesores')
     .select(`
       *,
-      personas(*),
-      especialidades(*)
+      personas(*)
     `)
     .order('fecha_registro', { ascending: false })
 
@@ -363,13 +361,12 @@ export async function createProfesor(data: CreateProfesorData): Promise<Profesor
 
   if (personaError) throw personaError
 
-  // Luego crear el profesor vinculado a la persona
+  // Luego crear el profesor usando el id_persona como id_profesor
   const { data: profesor, error: profesorError } = await supabase
     .from('profesores')
     .insert({
-      id_persona: persona.id_persona,
-      id_institucion: data.id_institucion,
-      id_especialidad: data.id_especialidad || null
+      id_profesor: persona.id_persona, // id_profesor ES id_persona
+      id_institucion: data.id_institucion
     })
     .select()
     .single()
@@ -391,12 +388,10 @@ export interface UpdateProfesorData {
   num_documento?: string
   celular?: string
   correo?: string
-  id_especialidad?: number
 }
 
 export async function updateProfesor(
-  idProfesor: number,
-  idPersona: number,
+  idProfesor: number, // id_profesor ES id_persona
   data: UpdateProfesorData
 ): Promise<Profesor> {
   // Validar documento duplicado si se proporcionó
@@ -404,7 +399,7 @@ export async function updateProfesor(
     const validacion = await validarDocumentoDuplicado({
       idTipoDocumento: data.id_tipo_documento,
       numDocumento: data.num_documento,
-      excludeIdPersona: idPersona // Excluir la persona actual
+      excludeIdPersona: idProfesor // id_profesor = id_persona
     })
 
     if (validacion.existe) {
@@ -412,7 +407,7 @@ export async function updateProfesor(
     }
   }
 
-  // Actualizar datos de la persona
+  // Actualizar datos de la persona (id_profesor = id_persona)
   const { error: personaError } = await supabase
     .from('personas')
     .update({
@@ -425,7 +420,7 @@ export async function updateProfesor(
       correo: data.correo || null,
       updated_at: new Date().toISOString()
     })
-    .eq('id_persona', idPersona)
+    .eq('id_persona', idProfesor)
 
   if (personaError) throw personaError
 
@@ -433,7 +428,6 @@ export async function updateProfesor(
   const { data: profesor, error: profesorError } = await supabase
     .from('profesores')
     .update({
-      id_especialidad: data.id_especialidad || null,
       updated_at: new Date().toISOString()
     })
     .eq('id_profesor', idProfesor)
