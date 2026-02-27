@@ -137,6 +137,7 @@ export interface Matricula {
   celular_alumno: string | null
   correo_alumno: string | null
   direccion_alumno: string | null
+  es_autoresponsable: boolean
   id_persona_responsable: number | null
   celular_responsable: string | null
   correo_responsable: string | null

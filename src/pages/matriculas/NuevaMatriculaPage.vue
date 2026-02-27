@@ -71,7 +71,8 @@ const matriculaDetalles = ref<MatriculaDetalle[]>([
 ])
 
 // Responsable data
-const hasResponsable = ref(false)
+const esAutoresponsable = ref(true) // Por defecto, el alumno es su propio responsable
+const hasResponsable = ref(false) // Tiene responsable externo (solo si esAutoresponsable = false)
 const responsableForm = ref({
   nombres: '',
   ap_paterno: '',
@@ -110,13 +111,49 @@ const stepTitle = computed(() => {
 })
 
 const canProceedStep1 = computed(() => {
-  if (selectedStudent.value) return true
-  if (isNewStudent.value) {
-    return studentForm.value.nombres &&
-      studentForm.value.ap_paterno &&
-      studentForm.value.id_tipo_documento &&
-      studentForm.value.num_documento
+  // Validar datos básicos del alumno
+  const datosBasicosAlumno = studentForm.value.nombres &&
+    studentForm.value.ap_paterno &&
+    studentForm.value.id_tipo_documento &&
+    studentForm.value.num_documento
+
+  // Si es alumno existente y no estamos editando
+  if (selectedStudent.value && !isNewStudent.value) {
+    // Si es autoresponsable, validar que tenga celular
+    if (esAutoresponsable.value) {
+      return !!studentForm.value.celular
+    }
+    // Si NO es autoresponsable, validar datos del responsable
+    if (!esAutoresponsable.value && hasResponsable.value) {
+      return responsableForm.value.nombres &&
+        responsableForm.value.ap_paterno &&
+        responsableForm.value.celular
+    }
+    // Si NO es autoresponsable pero no tiene responsable, no puede continuar
+    return false
   }
+
+  // Si es alumno nuevo o estamos editando datos
+  if (isNewStudent.value || selectedStudent.value) {
+    // Validar datos básicos
+    if (!datosBasicosAlumno) return false
+
+    // Si es autoresponsable, validar celular del alumno
+    if (esAutoresponsable.value) {
+      return !!studentForm.value.celular
+    }
+
+    // Si NO es autoresponsable, validar datos del responsable
+    if (!esAutoresponsable.value && hasResponsable.value) {
+      return responsableForm.value.nombres &&
+        responsableForm.value.ap_paterno &&
+        responsableForm.value.celular
+    }
+
+    // Si NO es autoresponsable pero no tiene responsable, no puede continuar
+    return false
+  }
+
   return false
 })
 
@@ -542,6 +579,7 @@ function clearSelection() {
     direccion: ''
   }
   // Limpiar responsable
+  esAutoresponsable.value = true // Por defecto autoresponsable
   hasResponsable.value = false
   responsableForm.value = {
     nombres: '',
@@ -566,15 +604,28 @@ async function loadResponsable(idAlumno: number) {
 
     if (relacion && relacion.personas) {
       const persona = Array.isArray(relacion.personas) ? relacion.personas[0] : relacion.personas
-      hasResponsable.value = true
-      responsableForm.value = {
-        nombres: persona.nombres,
-        ap_paterno: persona.ap_paterno,
-        ap_materno: persona.ap_materno || '',
-        celular: persona.celular || '',
-        correo: persona.correo || '',
-        id_parentesco: relacion.id_parentesco
+
+      // Verificar si es autoresponsable (responsable = alumno)
+      if (relacion.id_persona_responsable === idAlumno) {
+        esAutoresponsable.value = true
+        hasResponsable.value = false
+      } else {
+        // Responsable externo
+        esAutoresponsable.value = false
+        hasResponsable.value = true
+        responsableForm.value = {
+          nombres: persona.nombres,
+          ap_paterno: persona.ap_paterno,
+          ap_materno: persona.ap_materno || '',
+          celular: persona.celular || '',
+          correo: persona.correo || '',
+          id_parentesco: relacion.id_parentesco
+        }
       }
+    } else {
+      // Sin responsable registrado, por defecto autoresponsable
+      esAutoresponsable.value = true
+      hasResponsable.value = false
     }
   } catch (err) {
     console.error('Error loading responsable:', err)
@@ -757,7 +808,17 @@ async function submitMatricula() {
 
     // Step 2: Create or update responsable if needed
     let responsablePersonaId: number | null = null
-    if (hasResponsable.value && responsableForm.value.nombres) {
+    let celularResponsable: string | null = null
+    let correoResponsable: string | null = null
+    let direccionResponsable: string | null = null
+
+    if (esAutoresponsable.value) {
+      // Autoresponsable: usar el mismo id_alumno como responsable y copiar datos
+      responsablePersonaId = alumnoId
+      celularResponsable = studentForm.value.celular || null
+      correoResponsable = studentForm.value.correo || null
+      direccionResponsable = studentForm.value.direccion || null
+    } else if (hasResponsable.value && responsableForm.value.nombres) {
       // Buscar si ya existe un responsable para este alumno
       const { data: relacionExistente } = await supabase
         .from('alumnos_responsables')
@@ -790,6 +851,10 @@ async function submitMatricula() {
             .update({ id_parentesco: responsableForm.value.id_parentesco })
             .eq('id_alumno_responsable', relacionExistente.id_alumno_responsable)
         }
+
+        // Asignar datos del responsable para la matrícula
+        celularResponsable = responsableForm.value.celular || null
+        correoResponsable = responsableForm.value.correo || null
       } else {
         // Crear nuevo responsable
         const { data: newResponsable, error: respError } = await supabase
@@ -806,6 +871,10 @@ async function submitMatricula() {
 
         if (respError) throw respError
         responsablePersonaId = newResponsable.id_persona
+
+        // Asignar datos del responsable para la matrícula
+        celularResponsable = responsableForm.value.celular || null
+        correoResponsable = responsableForm.value.correo || null
 
         // Create alumno_responsable relation
         await supabase
@@ -885,10 +954,11 @@ async function submitMatricula() {
         celular_alumno: studentForm.value.celular || null,
         correo_alumno: studentForm.value.correo || null,
         direccion_alumno: studentForm.value.direccion || null,
-        id_persona_responsable: responsablePersonaId ?? null,
-        celular_responsable: hasResponsable.value ? (responsableForm.value.celular || null) : null,
-        correo_responsable: hasResponsable.value ? (responsableForm.value.correo || null) : null,
-        direccion_responsable: null,
+        es_autoresponsable: esAutoresponsable.value,
+        id_persona_responsable: responsablePersonaId,
+        celular_responsable: celularResponsable,
+        correo_responsable: correoResponsable,
+        direccion_responsable: direccionResponsable,
         estado: 'activo'
       })
       .select()
@@ -1127,12 +1197,24 @@ loadCatalogs()
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div class="form-control w-full flex flex-col">
                 <label class="label"><span class="label-text">Nombres <span class="text-red-500">*</span></span></label>
-                <input v-model="studentForm.nombres" type="text" class="input input-bordered" required />
+                <input
+                  v-model="studentForm.nombres"
+                  type="text"
+                  class="input input-bordered"
+                  :class="{ 'input-error': !studentForm.nombres }"
+                  required
+                />
               </div>
               <div class="form-control w-full flex flex-col">
                 <label class="label"><span class="label-text">Apellido Paterno <span
                       class="text-red-500">*</span></span></label>
-                <input v-model="studentForm.ap_paterno" type="text" class="input input-bordered" required />
+                <input
+                  v-model="studentForm.ap_paterno"
+                  type="text"
+                  class="input input-bordered"
+                  :class="{ 'input-error': !studentForm.ap_paterno }"
+                  required
+                />
               </div>
               <div class="form-control w-full flex flex-col">
                 <label class="label"><span class="label-text">Apellido Materno</span></label>
@@ -1140,7 +1222,12 @@ loadCatalogs()
               </div>
               <div class="form-control w-full flex flex-col">
                 <label class="label"><span class="label-text">Tipo Documento <span class="text-red-500">*</span></span></label>
-                <select v-model="studentForm.id_tipo_documento" class="select select-bordered" required>
+                <select
+                  v-model="studentForm.id_tipo_documento"
+                  class="select select-bordered"
+                  :class="{ 'select-error': !studentForm.id_tipo_documento }"
+                  required
+                >
                   <option v-for="tipo in tiposDocumentos" :key="tipo.id_tipo_documento" :value="tipo.id_tipo_documento">
                     {{ tipo.nombre }}
                   </option>
@@ -1149,7 +1236,13 @@ loadCatalogs()
               <div class="form-control w-full flex flex-col">
                 <label class="label"><span class="label-text">Número Documento <span
                       class="text-red-500">*</span></span></label>
-                <input v-model="studentForm.num_documento" type="text" class="input input-bordered" required />
+                <input
+                  v-model="studentForm.num_documento"
+                  type="text"
+                  class="input input-bordered"
+                  :class="{ 'input-error': !studentForm.num_documento }"
+                  required
+                />
               </div>
               <div class="form-control w-full flex flex-col">
                 <label class="label"><span class="label-text">Fecha Nacimiento</span></label>
@@ -1160,8 +1253,23 @@ loadCatalogs()
                 <input v-model="studentForm.correo" type="email" class="input input-bordered" />
               </div>
               <div class="form-control w-full flex flex-col">
-                <label class="label"><span class="label-text">Celular</span></label>
-                <input v-model="studentForm.celular" type="tel" class="input input-bordered" />
+                <label class="label">
+                  <span class="label-text">
+                    Celular
+                    <span v-if="esAutoresponsable" class="text-red-500">*</span>
+                  </span>
+                </label>
+                <input
+                  v-model="studentForm.celular"
+                  type="tel"
+                  class="input input-bordered"
+                  :class="{ 'input-error': esAutoresponsable && !studentForm.celular }"
+                  :required="esAutoresponsable"
+                  placeholder="Ej: 987654321"
+                />
+                <span v-if="esAutoresponsable && !studentForm.celular" class="label-text-alt text-error mt-1">
+                  El celular es obligatorio cuando el alumno es su propio responsable
+                </span>
               </div>
               <div class="form-control w-full flex flex-col">
                 <label class="label"><span class="label-text">Sexo</span></label>
@@ -1180,21 +1288,65 @@ loadCatalogs()
 
             <!-- Responsable Section -->
             <div class="divider">Responsable / Apoderado</div>
+
+            <!-- Opción: Autoresponsable -->
             <div class="form-control w-full flex flex-col">
               <label class="label cursor-pointer justify-start gap-3">
-                <input v-model="hasResponsable" type="checkbox" class="checkbox checkbox-primary" />
-                <span class="label-text font-semibold">Agregar responsable/apoderado</span>
+                <input
+                  v-model="esAutoresponsable"
+                  type="checkbox"
+                  class="checkbox checkbox-primary"
+                  @change="hasResponsable = false"
+                />
+                <span class="label-text font-semibold">El alumno es su propio responsable</span>
               </label>
+              <span class="text-xs text-base-content/60 ml-9">
+                Se usará el celular del alumno para las comunicaciones (obligatorio)
+              </span>
             </div>
 
-            <div v-if="hasResponsable" class="grid grid-cols-1 md:grid-cols-2 gap-4 pl-4 border-l-2 border-primary">
+            <!-- Opción: Responsable externo -->
+            <div v-if="!esAutoresponsable" class="space-y-3 mt-2">
               <div class="form-control w-full flex flex-col">
-                <label class="label"><span class="label-text">Nombres</span></label>
-                <input v-model="responsableForm.nombres" type="text" class="input input-bordered" />
+                <label class="label cursor-pointer justify-start gap-3">
+                  <input v-model="hasResponsable" type="checkbox" class="checkbox checkbox-secondary" />
+                  <span class="label-text font-semibold">Agregar datos del responsable/apoderado</span>
+                </label>
+              </div>
+
+              <!-- Alerta si no tiene responsable -->
+              <div v-if="!hasResponsable" class="alert alert-warning text-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span>Debe agregar los datos del responsable para continuar</span>
+              </div>
+            </div>
+
+            <div v-if="!esAutoresponsable && hasResponsable" class="grid grid-cols-1 md:grid-cols-2 gap-4 pl-4 border-l-2 border-secondary">
+              <div class="form-control w-full flex flex-col">
+                <label class="label">
+                  <span class="label-text">Nombres <span class="text-red-500">*</span></span>
+                </label>
+                <input
+                  v-model="responsableForm.nombres"
+                  type="text"
+                  class="input input-bordered"
+                  :class="{ 'input-error': !esAutoresponsable && hasResponsable && !responsableForm.nombres }"
+                  required
+                />
               </div>
               <div class="form-control w-full flex flex-col">
-                <label class="label"><span class="label-text">Apellido Paterno</span></label>
-                <input v-model="responsableForm.ap_paterno" type="text" class="input input-bordered" />
+                <label class="label">
+                  <span class="label-text">Apellido Paterno <span class="text-red-500">*</span></span>
+                </label>
+                <input
+                  v-model="responsableForm.ap_paterno"
+                  type="text"
+                  class="input input-bordered"
+                  :class="{ 'input-error': !esAutoresponsable && hasResponsable && !responsableForm.ap_paterno }"
+                  required
+                />
               </div>
               <div class="form-control w-full flex flex-col">
                 <label class="label"><span class="label-text">Apellido Materno</span></label>
@@ -1210,8 +1362,16 @@ loadCatalogs()
                 </select>
               </div>
               <div class="form-control w-full flex flex-col">
-                <label class="label"><span class="label-text">Celular</span></label>
-                <input v-model="responsableForm.celular" type="tel" class="input input-bordered" />
+                <label class="label">
+                  <span class="label-text">Celular <span class="text-red-500">*</span></span>
+                </label>
+                <input
+                  v-model="responsableForm.celular"
+                  type="tel"
+                  class="input input-bordered"
+                  :class="{ 'input-error': !esAutoresponsable && hasResponsable && !responsableForm.celular }"
+                  required
+                />
               </div>
               <div class="form-control w-full flex flex-col">
                 <label class="label"><span class="label-text">Correo</span></label>
@@ -1570,9 +1730,23 @@ loadCatalogs()
           </div>
 
           <!-- Responsable Summary -->
-          <div v-if="hasResponsable && responsableForm.nombres" class="bg-base-200 rounded-box p-4">
+          <div class="bg-base-200 rounded-box p-4">
             <h3 class="font-semibold mb-3">Responsable/Apoderado</h3>
-            <div class="grid grid-cols-2 gap-2 text-sm">
+            <div v-if="esAutoresponsable" class="text-sm">
+              <div class="flex items-center gap-2 text-success">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span class="font-semibold">El alumno es su propio responsable</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-sm mt-3">
+                <div class="text-base-content/60">Celular de contacto:</div>
+                <div>{{ studentForm.celular || '-' }}</div>
+                <div class="text-base-content/60">Correo de contacto:</div>
+                <div>{{ studentForm.correo || '-' }}</div>
+              </div>
+            </div>
+            <div v-else-if="hasResponsable && responsableForm.nombres" class="grid grid-cols-2 gap-2 text-sm">
               <div class="text-base-content/60">Nombre:</div>
               <div>{{ responsableForm.nombres }} {{ responsableForm.ap_paterno }} {{ responsableForm.ap_materno }}</div>
               <div class="text-base-content/60">Parentesco:</div>
@@ -1581,6 +1755,9 @@ loadCatalogs()
               <div>{{ responsableForm.celular || '-' }}</div>
               <div class="text-base-content/60">Correo:</div>
               <div>{{ responsableForm.correo || '-' }}</div>
+            </div>
+            <div v-else class="text-sm text-base-content/60">
+              Sin responsable asignado
             </div>
           </div>
         </div>

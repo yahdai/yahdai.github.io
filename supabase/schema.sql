@@ -171,6 +171,7 @@ create table matriculas (
   celular_alumno varchar(20),
   correo_alumno varchar(100),
   direccion_alumno varchar(500),
+  es_autoresponsable boolean default false,
   id_persona_responsable integer references personas(id_persona),
   celular_responsable varchar(20),
   correo_responsable varchar(100),
@@ -180,6 +181,10 @@ create table matriculas (
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
   updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
 );
+
+COMMENT ON COLUMN matriculas.es_autoresponsable IS
+'Indica si el alumno es su propio responsable. Si es true, celular_responsable contiene el celular del alumno.';
+
 
 -- Detalles de matrículas
 create table matriculas_detalles (
@@ -205,6 +210,11 @@ create table matriculas_detalles (
 -- ============================================
 -- PAGOS
 -- ============================================
+-- Sistema flexible de pagos que permite:
+-- - Pagos parciales a un cronograma
+-- - Un depósito aplicado a múltiples cronogramas
+-- - Múltiples depósitos para un mismo cronograma
+-- - Aplicación automática o manual de pagos
 
 -- Cronogramas de pagos
 create table cronogramas_pagos (
@@ -213,21 +223,46 @@ create table cronogramas_pagos (
   fecha_cargo date not null,
   fecha_vencimiento date not null,
   importe decimal(10,2) not null,
-  estado varchar(20) default 'pendiente' check (estado in ('pendiente', 'pagado', 'vencido', 'anulado')),
+  importe_pagado decimal(10,2) default 0 not null,
+  estado varchar(20) default 'pendiente' check (estado in ('pendiente', 'parcial', 'pagado', 'vencido', 'anulado')),
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null,
   updated_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
 );
 
+comment on column cronogramas_pagos.importe_pagado is 'Monto total pagado hasta el momento (calculado automáticamente)';
+
 -- Depositos (pagos realizados)
 create table depositos (
   id_deposito serial primary key,
+  id_matricula integer not null references matriculas(id_matricula) on delete cascade,
   id_cronograma_pago integer references cronogramas_pagos(id_cronograma_pago) on delete cascade,
   id_institucion integer references instituciones(id_institucion),
+  id_anho integer not null,
+  id_mes integer not null,
   id_medio_deposito integer references medios_depositos(id_medio_deposito),
   fecha date default current_date,
   importe decimal(10,2) not null,
+  numero_operacion varchar(100),
+  observaciones text,
   created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
 );
+
+comment on column depositos.id_matricula is 'Matrícula a la que pertenece este depósito';
+comment on column depositos.numero_operacion is 'Número de operación bancaria, código Yape, etc.';
+comment on column depositos.observaciones is 'Observaciones adicionales sobre el pago';
+
+-- Aplicaciones de depósitos a cronogramas
+-- Permite flexibilidad: un depósito puede aplicarse a múltiples cronogramas
+-- y un cronograma puede recibir múltiples pagos parciales
+create table depositos_aplicaciones (
+  id_aplicacion serial primary key,
+  id_deposito integer not null references depositos(id_deposito) on delete cascade,
+  id_cronograma_pago integer not null references cronogramas_pagos(id_cronograma_pago) on delete cascade,
+  importe_aplicado decimal(10,2) not null check (importe_aplicado > 0),
+  created_at timestamp with time zone default timezone('America/Lima'::text, now()) not null
+);
+
+comment on table depositos_aplicaciones is 'Registra cómo se aplican los depósitos a los cronogramas de pago. Permite flexibilidad para pagos parciales y aplicación a múltiples cronogramas.';
 
 -- ============================================
 -- ASISTENCIAS
@@ -269,6 +304,9 @@ create index idx_matriculas_alumno on matriculas(id_alumno);
 create index idx_matriculas_periodo on matriculas(id_periodo);
 create index idx_cronogramas_pagos_matricula on cronogramas_pagos(id_matricula);
 create index idx_cronogramas_pagos_estado on cronogramas_pagos(estado);
+create index idx_depositos_matricula on depositos(id_matricula);
+create index idx_aplicaciones_deposito on depositos_aplicaciones(id_deposito);
+create index idx_aplicaciones_cronograma on depositos_aplicaciones(id_cronograma_pago);
 create index idx_asistencias_cronograma on asistencias(id_cronograma_asistencia);
 create index idx_asistencias_alumno on asistencias(id_alumno);
 
@@ -286,6 +324,7 @@ alter table matriculas enable row level security;
 alter table matriculas_detalles enable row level security;
 alter table cronogramas_pagos enable row level security;
 alter table depositos enable row level security;
+alter table depositos_aplicaciones enable row level security;
 alter table cronogramas_asistencias enable row level security;
 alter table asistencias enable row level security;
 
@@ -300,6 +339,7 @@ create policy "auth_access" on matriculas for all to authenticated using (true) 
 create policy "auth_access" on matriculas_detalles for all to authenticated using (true) with check (true);
 create policy "auth_access" on cronogramas_pagos for all to authenticated using (true) with check (true);
 create policy "auth_access" on depositos for all to authenticated using (true) with check (true);
+create policy "auth_access" on depositos_aplicaciones for all to authenticated using (true) with check (true);
 create policy "auth_access" on cronogramas_asistencias for all to authenticated using (true) with check (true);
 create policy "auth_access" on asistencias for all to authenticated using (true) with check (true);
 
@@ -320,9 +360,10 @@ insert into roles (nombre) values ('Administrador'), ('Recepcionista'), ('Profes
 insert into frecuencias (nombre, numeros_de_dias) values ('A (Lunes, Miércoles y Viernes)', '2,4,6'), ('B (Martes y Jueves)', '3,5'), ('C (Solo domingos)', '7'), ('D (Lunes a Viernes)', '2,3,4,5,6');
 
 -- ============================================
--- TRIGGER: Crear usuario automáticamente al registrarse
+-- TRIGGERS
 -- ============================================
 
+-- TRIGGER: Crear usuario automáticamente al registrarse
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -335,3 +376,59 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- TRIGGER: Actualizar importe_pagado y estado automáticamente
+-- Cuando se inserta o elimina una aplicación de depósito,
+-- actualiza el importe_pagado y estado del cronograma correspondiente
+create or replace function actualizar_cronograma_pago()
+returns trigger as $$
+declare
+  nuevo_importe_pagado decimal(10,2);
+  importe_total decimal(10,2);
+  nuevo_estado varchar(20);
+  id_cron integer;
+begin
+  -- Determinar el ID del cronograma afectado
+  if TG_OP = 'DELETE' then
+    id_cron := old.id_cronograma_pago;
+  else
+    id_cron := new.id_cronograma_pago;
+  end if;
+
+  -- Calcular el nuevo importe_pagado sumando todas las aplicaciones
+  select
+    coalesce(sum(importe_aplicado), 0),
+    cp.importe
+  into nuevo_importe_pagado, importe_total
+  from cronogramas_pagos cp
+  left join depositos_aplicaciones da on da.id_cronograma_pago = cp.id_cronograma_pago
+  where cp.id_cronograma_pago = id_cron
+  group by cp.importe;
+
+  -- Determinar el nuevo estado
+  if nuevo_importe_pagado >= importe_total then
+    nuevo_estado := 'pagado';
+  elsif nuevo_importe_pagado > 0 then
+    nuevo_estado := 'parcial';
+  else
+    nuevo_estado := 'pendiente';
+  end if;
+
+  -- Actualizar el cronograma en una sola operación
+  update cronogramas_pagos
+  set
+    importe_pagado = nuevo_importe_pagado,
+    estado = nuevo_estado
+  where id_cronograma_pago = id_cron;
+
+  if TG_OP = 'DELETE' then
+    return old;
+  else
+    return new;
+  end if;
+end;
+$$ language plpgsql;
+
+create trigger trigger_actualizar_cronograma_pago
+  after insert or delete on depositos_aplicaciones
+  for each row execute function actualizar_cronograma_pago();

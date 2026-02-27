@@ -18,10 +18,11 @@ Sistema de gestión para academia de música **Yahdai Academia**.
 | `/` | DashboardPage | Placeholder |
 | `/login` | LoginPage | Funcional |
 | `/matriculas` | MatriculasPage | Funcional (lista + filtros + paginación + ver + eliminar + PDF) |
-| `/matriculas/nueva` | NuevaMatriculaPage | Funcional (wizard 3 pasos) |
+| `/matriculas/nueva` | NuevaMatriculaPage | Funcional (wizard 3 pasos + autoresponsable) |
 | `/estudiantes` | EstudiantesPage | Placeholder |
-| `/pagos` | PagosPage | Placeholder |
-| `/asistencias` | AsistenciasPage | Funcional (escaneo QR/DNI + marcado rápido) |
+| `/pagos` | PagosPage | Funcional (lista matrículas con resumen financiero) |
+| `/pagos/:id` | PagoDetallePage | Funcional (cronograma + registro de pagos + aplicación automática/manual) |
+| `/asistencias` | AsistenciasPage | Funcional (3 tabs: marcado rápido + resumen alumnos + sesiones día) |
 | `/catalogos` | CatalogosPage | Placeholder |
 
 ## Estructura de Archivos
@@ -168,9 +169,12 @@ profesores: id_profesor PK FK->personas(id_persona), id_institucion, fecha_regis
 -- Matrículas
 matriculas: id_matricula, id_institucion, id_periodo, id_alumno,
             celular_alumno, correo_alumno, direccion_alumno,
-            id_persona_responsable, celular_responsable,
+            es_autoresponsable, id_persona_responsable, celular_responsable,
             correo_responsable, direccion_responsable,
             fecha_registro, tipo, estado
+
+-- NOTA: es_autoresponsable indica si el alumno es su propio responsable
+-- Si es true: id_persona_responsable = id_alumno, celular_responsable = celular_alumno
 
 -- Detalles de matrícula
 matriculas_detalles: id_matricula_detalle, id_matricula, id_profesor,
@@ -265,7 +269,19 @@ npm run preview      # Preview del build
 
 ## Migraciones de Base de Datos
 
-Ejecutar en Supabase SQL Editor en este orden:
+### Schema Principal
+
+El archivo **`supabase/schema.sql`** contiene el schema completo de la base de datos, incluyendo:
+- Tablas base y relaciones
+- Sistema de pagos flexibles (cronogramas, depósitos, aplicaciones)
+- Triggers automáticos para actualización de estados de pago
+- Índices y políticas RLS
+
+**Para nueva instalación**: Ejecutar únicamente `supabase/schema.sql` en Supabase SQL Editor.
+
+### Migraciones Adicionales (solo para bases existentes)
+
+Si ya tienes una base de datos creada con un schema anterior, ejecutar estas migraciones en orden:
 
 1. **`supabase/migration-documento-unique.sql`**: Agrega constraint UNIQUE para validar que no se dupliquen documentos
    - Verifica duplicados existentes antes de ejecutar
@@ -273,6 +289,11 @@ Ejecutar en Supabase SQL Editor en este orden:
 
 2. **`supabase/migration-direccion-alumno.sql`**: Agrega campo `direccion_alumno` en tabla `matriculas`
    - Almacena la dirección del alumno al momento de la matrícula
+
+3. **`supabase/migration-depositos-flexibles.sql`**: ⚠️ **YA INTEGRADA EN SCHEMA.SQL**
+   - Sistema de pagos flexibles con aplicaciones
+   - Triggers automáticos para estados de pago
+   - **Solo ejecutar si tu base ya existe y no tiene estas tablas**
 
 **IMPORTANTE**: Ejecutar las migraciones en orden y verificar que no haya errores antes de continuar.
 
@@ -359,3 +380,91 @@ Ver `.github/workflows/deploy.yml`.
 - Los cambios se aplican a la tabla `personas` (datos maestros)
 - Cada matrícula guarda una "fotografía" de los datos de contacto en ese periodo
 - Los responsables también se cargan y actualizan automáticamente
+
+## Lógica de Pagos
+
+### Arquitectura del Sistema de Pagos
+
+**Estructura de dos niveles:**
+1. **Cronograma de Pagos** (`cronogramas_pagos`): Plan de pagos generado automáticamente al crear la matrícula
+2. **Depósitos** (`depositos`): Pagos reales registrados por el usuario
+3. **Aplicaciones** (`depositos_aplicaciones`): Tabla puente que relaciona qué parte de un depósito se aplicó a qué cronograma
+
+**Estados de Cronograma:**
+- `pendiente`: Sin pagar (inicial)
+- `parcial`: Pagado parcialmente
+- `pagado`: Pagado completamente
+- `vencido`: Pasó la fecha de vencimiento sin pagar
+- `anulado`: Cronograma anulado
+
+### Flexibilidad del Sistema
+
+**Casos soportados:**
+- ✅ Pago exacto (monto = cronograma)
+- ✅ Pago parcial (monto < cronograma)
+- ✅ Pago adelantado (cubre múltiples cronogramas)
+- ✅ Pago con excedente (aplicar saldo a siguiente cronograma)
+- ✅ Múltiples depósitos para un cronograma
+- ✅ Anulación de depósitos (revierte aplicaciones automáticamente)
+
+### Modo de Aplicación de Pagos
+
+**Automático:**
+- El sistema aplica el pago a los cronogramas más antiguos pendientes
+- Orden: por `fecha_vencimiento` ascendente
+- Distribuye el monto entre cronogramas hasta agotarlo
+
+**Manual:**
+- Usuario selecciona a qué cronogramas aplicar el pago
+- Puede especificar el importe exacto para cada cronograma
+- Validaciones: no exceder el saldo pendiente ni el importe total
+
+### Cálculos Automáticos
+
+**Triggers de Base de Datos:**
+- `actualizar_importe_pagado()`: Actualiza `cronogramas_pagos.importe_pagado` cuando se inserta/elimina una aplicación
+- `actualizar_estado_cronograma()`: Cambia estado a `pagado` cuando `importe_pagado >= importe`, o `parcial` si está entre 0 y el total
+
+**Estados Visuales:**
+- **Al día**: Sin pagos vencidos
+- **Próximo a vencer**: Tiene un vencimiento en los próximos 7 días
+- **Atrasado**: Tiene pagos vencidos
+- **Pagado**: Todos los cronogramas pagados
+
+### Interfaz de Usuario
+
+**Página Principal** (`/pagos`):
+- Lista de matrículas con resumen financiero
+- Filtros: periodo, estado, búsqueda por alumno
+- Cards responsive (mobile) y tabla (desktop)
+- Indicadores visuales por estado
+
+**Página Detalle** (`/pagos/:id`):
+- Datos del alumno y matrícula
+- Resumen financiero (stats)
+- Cronograma de pagos completo con estados
+- Historial de depósitos con detalle de aplicaciones
+- Modal para registrar nuevo pago
+
+**Modal Registro de Pago:**
+- Campos: importe, fecha, medio de pago, nº operación, observaciones
+- Modo automático o manual
+- Vista previa de distribución
+- Validaciones en tiempo real
+
+### Schema de Base de Datos
+
+**IMPORTANTE**: El sistema de pagos flexibles está incluido en `supabase/schema.sql`.
+
+Para nueva instalación:
+- Ejecutar únicamente `supabase/schema.sql` en Supabase SQL Editor
+
+Para bases de datos existentes creadas con schema anterior:
+- Ejecutar `supabase/migration-depositos-flexibles.sql` para actualizar
+
+El sistema incluye:
+- Tabla `depositos_aplicaciones` para aplicación flexible de pagos
+- Triggers automáticos para actualizar estados y montos pagados
+- Campos adicionales: `importe_pagado`, `numero_operacion`, `observaciones`
+- Crea triggers automáticos
+- Agrega estado `parcial` a cronogramas
