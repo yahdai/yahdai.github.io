@@ -116,7 +116,13 @@ onMounted(cargarDatos)
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="space-y-3 sm:space-y-4">
+    <!-- Header -->
+    <div>
+      <h1 class="text-xl sm:text-2xl font-bold">Resumen de Asistencias</h1>
+      <p class="text-sm text-base-content/60">Resumen de asistencias por alumno y periodo</p>
+    </div>
+
     <!-- Filtros -->
     <div class="card bg-base-100 shadow">
       <div class="card-body p-3 sm:p-4">
