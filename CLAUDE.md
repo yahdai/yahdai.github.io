@@ -15,15 +15,15 @@ Sistema de gestión para academia de música **Yahdai Academia**.
 
 | Ruta | Componente | Estado |
 |------|------------|--------|
-| `/` | DashboardPage | Placeholder |
+| `/` | DashboardPage | Funcional (stats + alertas de pagos + sesiones del día + acciones rápidas) |
 | `/login` | LoginPage | Funcional |
 | `/matriculas` | MatriculasPage | Funcional (lista + filtros + paginación + ver + eliminar + PDF) |
 | `/matriculas/nueva` | NuevaMatriculaPage | Funcional (wizard 3 pasos + autoresponsable) |
-| `/estudiantes` | EstudiantesPage | Placeholder |
-| `/pagos` | PagosPage | Funcional (lista matrículas con resumen financiero) |
+| `/estudiantes` | EstudiantesPage | Funcional (lista + filtros + contratos + edición + Excel) |
+| `/pagos` | PagosPage | Funcional (lista matrículas con resumen financiero + WhatsApp) |
 | `/pagos/:id` | PagoDetallePage | Funcional (cronograma + registro de pagos + aplicación automática/manual) |
 | `/asistencias` | AsistenciasPage | Funcional (3 tabs: marcado rápido + resumen alumnos + sesiones día) |
-| `/catalogos` | CatalogosPage | Placeholder |
+| `/catalogos` | CatalogosPage | Funcional (gestión de especialidades, profesores, horarios, frecuencias, periodos) |
 
 ## Estructura de Archivos
 
@@ -400,11 +400,78 @@ Abrir Chrome DevTools > Application tab > Service Workers / Manifest
 
 ## Notas para Futuras Implementaciones
 
-1. **Estudiantes**: Crear CRUD basado en `personas` + `alumnos`
-2. **Pagos**: Usar `cronogramas_pagos` + `depositos`
-3. **Catálogos**: CRUD para `especialidades`, `frecuencias`, `horarios`, `periodos`
+### Fase 2 del Dashboard (Pendiente)
+- Distribución por especialidad (gráfico de barras/pie)
+- Métricas de asistencia del mes (tasa general, baja asistencia, tardanzas)
+- Resumen del periodo actual (fechas, semanas transcurridas)
 
-4. **TODO**: El `id_institucion` está hardcodeado como `1`. Implementar selección de institución según el usuario logueado.
+### Fase 3 del Dashboard (Pendiente)
+- Gráficos de tendencias mensuales (ingresos, matrículas, asistencia)
+- Estudiantes con baja asistencia (más de 3 faltas consecutivas)
+
+### Otras Mejoras Futuras
+- **TODO**: El `id_institucion` está hardcodeado como `1`. Implementar selección de institución según el usuario logueado.
+- **Reportes**: Agregar más reportes (ingresos por periodo, asistencias por especialidad, etc.)
+
+## Dashboard
+
+El dashboard muestra un resumen ejecutivo de la academia con las métricas más importantes.
+
+### Stats Principales (4 cards superiores)
+
+1. **Estudiantes Activos**: Count distinct de alumnos con matrículas en estado "activo"
+2. **Matrículas Activas**: Total de matrículas con estado "activo"
+3. **Ingresos del Mes**: Suma de depósitos del mes actual (excluyendo anulados)
+4. **Pagos Pendientes**: Suma de saldos pendientes en cronogramas (pendiente/vencido/parcial)
+
+### Alertas de Pagos
+
+**Pagos Vencidos (color rojo):**
+- Lista de cronogramas con fecha de vencimiento anterior a hoy
+- Muestra: nombre del alumno, fecha de vencimiento, días de atraso, saldo pendiente
+- Acciones: Ver detalle del pago, Enviar recordatorio por WhatsApp
+
+**Próximos a Vencer (color amarillo):**
+- Cronogramas que vencen en los próximos 7 días
+- Muestra: nombre del alumno, fecha de vencimiento, saldo pendiente
+- Acciones: Ver detalle del pago, Enviar recordatorio por WhatsApp
+
+**Mensajes de WhatsApp:**
+- Para vencidos: Incluye nombre, días de atraso y monto
+- Para próximos: Incluye nombre, fecha de vencimiento y monto
+
+### Sesiones de Hoy
+
+- Lista de todas las sesiones programadas para la fecha actual
+- Muestra: nombre del alumno, especialidad, profesor, horario, estado de asistencia
+- Badge con color según estado (pendiente, presente, tardanza, ausente, justificado)
+- Botón para ir a marcar asistencias
+- Orden: por hora de inicio (ascendente)
+
+### Acciones Rápidas
+
+Enlaces directos a las operaciones más frecuentes:
+- Nueva Matrícula (btn-primary)
+- Gestionar Pagos (btn-secondary)
+- Tomar Asistencia (btn-accent)
+- Ver Estudiantes (btn-ghost)
+- Catálogos (btn-ghost)
+
+### Actualización de Datos
+
+- Botón de actualización manual en el header
+- Indicador de loading mientras carga datos
+- Todas las consultas se ejecutan en paralelo con `Promise.all()` para optimizar performance
+
+### Servicio: `src/services/dashboard.ts`
+
+**Funciones principales:**
+```typescript
+getStatsGenerales(): Promise<StatsGenerales>
+getPagosVencidos(): Promise<PagoAlerta[]>
+getPagosProximosVencer(): Promise<PagoAlerta[]>
+getSesionesHoy(): Promise<SesionHoy[]>
+```
 
 ## Lógica de Asistencias
 
