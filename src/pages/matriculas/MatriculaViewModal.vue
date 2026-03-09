@@ -131,8 +131,8 @@ async function downloadPDF() {
       doc.setFontSize(7)
       doc.setFont('helvetica', 'normal')
       doc.setTextColor(grayColor.r, grayColor.g, grayColor.b)
-      doc.text('Academia de Talleres de Musica', pageWidth - margin, 10, { align: 'right' })
-      doc.text('Tel: 999 999 999 | info@yahdai.com', pageWidth - margin, 14, { align: 'right' })
+      doc.text('Academia Yahdai', pageWidth - margin, 10, { align: 'right' })
+      doc.text('Tel: 941 480 493 | info@yahdai.com', pageWidth - margin, 14, { align: 'right' })
 
       // Línea separadora
       doc.setDrawColor(navyColor.r, navyColor.g, navyColor.b)
@@ -184,7 +184,7 @@ async function downloadPDF() {
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(navyColor.r, navyColor.g, navyColor.b)
     doc.text('CONTRATO DE MATRICULA', pageWidth / 2, y + 6, { align: 'center' })
-    doc.setFontSize(8)
+    doc.setFontSize(10)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(grayColor.r, grayColor.g, grayColor.b)
     doc.text(`N° ${String(m.id_matricula).padStart(6, '0')} | Periodo: ${m.periodos.nombre}`, pageWidth / 2, y + 11, { align: 'center' })
@@ -229,7 +229,7 @@ async function downloadPDF() {
       // Alumno es autoresponsable
       doc.setFillColor(230, 255, 230)
       drawRoundedRect(margin, y, contentWidth, 7, 2)
-      doc.setFontSize(7)
+      doc.setFontSize(8)
       doc.setFont('helvetica', 'italic')
       doc.setTextColor(22, 130, 74)
       doc.text('El alumno actua como su propio responsable legal.', pageWidth / 2, y + 4.5, { align: 'center' })
@@ -274,7 +274,7 @@ async function downloadPDF() {
       y += 9
 
       // Detalles
-      doc.setFontSize(7)
+      doc.setFontSize(8)
       doc.setFont('helvetica', 'normal')
       doc.setTextColor(grayColor.r, grayColor.g, grayColor.b)
       doc.text('Profesor:', margin + 3, y)
@@ -348,19 +348,19 @@ async function downloadPDF() {
     doc.setDrawColor(darkColor.r, darkColor.g, darkColor.b)
     doc.setLineWidth(0.3)
     doc.line(margin + 5, firmaY, margin + 5 + firmaWidth, firmaY)
-    doc.setFontSize(7)
+    doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(grayColor.r, grayColor.g, grayColor.b)
     doc.text('Firma del Responsable', margin + 5 + firmaWidth / 2, firmaY + 4, { align: 'center' })
-    doc.setFontSize(6)
+    doc.setFontSize(8)
     const dniResponsable = m.responsable?.num_documento || (m.es_autoresponsable ? alumno.num_documento : null) || '________________'
     doc.text(`DNI: ${dniResponsable}`, margin + 5 + firmaWidth / 2, firmaY + 7, { align: 'center' })
 
     // Línea firma academia
     doc.line(margin + firmaWidth + 25, firmaY, pageWidth - margin - 5, firmaY)
-    doc.setFontSize(7)
+    doc.setFontSize(8)
     doc.text('Firma y Sello de la Academia', margin + firmaWidth + 25 + firmaWidth / 2, firmaY + 4, { align: 'center' })
-    doc.setFontSize(6)
+    doc.setFontSize(8)
     doc.text('Yahdai Academia', margin + firmaWidth + 25 + firmaWidth / 2, firmaY + 7, { align: 'center' })
 
     y = firmaY + 10
@@ -372,7 +372,7 @@ async function downloadPDF() {
     drawRoundedRect(margin, y, contentWidth, 20, 2)
     y += 4
 
-    doc.setFontSize(6)
+    doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(grayColor.r, grayColor.g, grayColor.b)
     const terminos = [
