@@ -1,0 +1,66 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+/* Tema Yahdai Academia - Colores del logo */
+/* Primary: #F0AB00 (Naranja/Dorado) */
+/* Secondary: #1B365D (Azul Marino) */
+
+html[data-theme="yahdai"] {
+  color-scheme: light;
+
+  /* Primary - Naranja del logo */
+  --p: 41 100% 47%;
+  --pf: 41 100% 37%;
+  --pc: 0 0% 100%;
+
+  /* Secondary - Azul Marino del logo */
+  --s: 214 55% 23%;
+  --sf: 214 55% 33%;
+  --sc: 0 0% 100%;
+
+  /* Accent - Naranja del logo */
+  --a: 41 100% 47%;
+  --af: 41 100% 37%;
+  --ac: 0 0% 100%;
+
+  /* Neutral */
+  --n: 220 13% 18%;
+  --nf: 220 13% 13%;
+  --nc: 0 0% 100%;
+
+  /* Base colors */
+  --b1: 0 0% 100%;
+  --b2: 0 0% 96%;
+  --b3: 0 0% 88%;
+  --bc: 220 13% 18%;
+
+  /* State colors */
+  --in: 213 94% 68%;
+  --inc: 0 0% 100%;
+
+  --su: 142 76% 36%;
+  --suc: 0 0% 100%;
+
+  --wa: 38 92% 50%;
+  --wac: 0 0% 100%;
+
+  --er: 0 72% 51%;
+  --erc: 0 0% 100%;
+
+  /* Border radius */
+  --rounded-box: 1rem;
+  --rounded-btn: 0.5rem;
+  --rounded-badge: 1.9rem;
+
+  /* Animation */
+  --animation-btn: 0.25s;
+  --animation-input: 0.2s;
+
+  /* Button */
+  --btn-focus-scale: 0.95;
+  --border-btn: 1px;
+
+  /* Tab */
+  --tab-border: 1px;
+  --tab-radius: 0.5rem;
+}
