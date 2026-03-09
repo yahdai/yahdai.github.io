@@ -302,6 +302,78 @@ Si ya tienes una base de datos creada con un schema anterior, ejecutar estas mig
 GitHub Actions despliega automáticamente a GitHub Pages al hacer push a `main`.
 Ver `.github/workflows/deploy.yml`.
 
+## Progressive Web App (PWA)
+
+La aplicación está configurada como PWA para poder instalarse en dispositivos móviles y funcionar offline.
+
+### Características
+
+- **Instalable**: Los usuarios pueden instalar la app en sus dispositivos (móviles y desktop)
+- **Offline**: Funciona sin conexión gracias al service worker
+- **Cache inteligente**: Cachea recursos estáticos y respuestas de la API de Supabase
+- **Actualizaciones automáticas**: Detecta nuevas versiones y actualiza automáticamente
+
+### Configuración
+
+**Archivos clave:**
+- `vite.config.ts`: Configuración del plugin `vite-plugin-pwa`
+- `src/main.ts`: Registro del service worker
+- `src/vite-env.d.ts`: Tipos TypeScript para PWA
+- `public/manifest.webmanifest`: Manifest generado automáticamente en build
+- `public/sw.js`: Service worker generado automáticamente
+
+**Iconos PWA:**
+- `public/pwa-192x192.png`: Icono 192x192 (generado desde logo)
+- `public/pwa-512x512.png`: Icono 512x512 (generado desde logo)
+- `public/apple-touch-icon.png`: Icono para iOS (180x180)
+- `public/favicon.ico`: Favicon
+
+**Manifest:**
+```json
+{
+  "name": "Yahdai Academia",
+  "short_name": "Yahdai",
+  "description": "Sistema de gestión para academia de música Yahdai",
+  "theme_color": "#f0ab00",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "start_url": "/"
+}
+```
+
+**Cache Strategy:**
+- **Recursos estáticos** (JS, CSS, HTML, imágenes): Pre-cacheados al instalar
+- **API Supabase**: NetworkFirst (intenta red primero, fallback a cache)
+- **Expiración**: 24 horas para respuestas de API
+
+### Instalación en Dispositivos
+
+**En Android/Chrome:**
+1. Abrir la app en Chrome
+2. Chrome mostrará automáticamente el banner "Agregar a pantalla de inicio"
+3. O usar el menú de 3 puntos > "Instalar app"
+
+**En iOS/Safari:**
+1. Abrir la app en Safari
+2. Tocar el botón de compartir (cuadro con flecha hacia arriba)
+3. Seleccionar "Agregar a pantalla de inicio"
+
+**En Desktop (Chrome/Edge):**
+1. Abrir la app en el navegador
+2. Buscar el ícono de instalación en la barra de direcciones
+3. Click en "Instalar"
+
+### Testing PWA
+
+Para probar la PWA localmente:
+
+```bash
+npm run build
+npm run preview
+```
+
+Abrir Chrome DevTools > Application tab > Service Workers / Manifest
+
 ## UI Reference
 
 ### Colores de Estado (badges)
