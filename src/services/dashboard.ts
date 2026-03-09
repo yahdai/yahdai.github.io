@@ -1,5 +1,10 @@
 import { supabase } from './supabase'
 
+export interface Periodo {
+  id_periodo: number
+  nombre: string
+}
+
 export interface StatsGenerales {
   matriculas_activas: number
   estudiantes_activos: number
@@ -31,18 +36,41 @@ export interface SesionHoy {
   horario: string
 }
 
-export async function getStatsGenerales(): Promise<StatsGenerales> {
+export async function getPeriodos(): Promise<Periodo[]> {
+  const { data, error } = await supabase
+    .from('periodos')
+    .select('id_periodo, nombre')
+    .order('nombre', { ascending: false })
+
+  if (error) throw error
+
+  return data || []
+}
+
+export async function getStatsGenerales(idPeriodo: number | null = null): Promise<StatsGenerales> {
   // Matrículas activas
-  const { count: matriculas_activas } = await supabase
+  let queryMatriculasCount = supabase
     .from('matriculas')
     .select('*', { count: 'exact', head: true })
     .eq('estado', 'activo')
 
+  if (idPeriodo !== null) {
+    queryMatriculasCount = queryMatriculasCount.eq('id_periodo', idPeriodo)
+  }
+
+  const { count: matriculas_activas } = await queryMatriculasCount
+
   // Estudiantes activos (count distinct de alumnos con matrículas activas)
-  const { data: estudiantesData } = await supabase
+  let queryEstudiantes = supabase
     .from('matriculas')
     .select('id_alumno')
     .eq('estado', 'activo')
+
+  if (idPeriodo !== null) {
+    queryEstudiantes = queryEstudiantes.eq('id_periodo', idPeriodo)
+  }
+
+  const { data: estudiantesData } = await queryEstudiantes
 
   const estudiantes_activos = new Set(estudiantesData?.map(m => m.id_alumno) || []).size
 
@@ -51,22 +79,46 @@ export async function getStatsGenerales(): Promise<StatsGenerales> {
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
   const inicioMesStr = inicioMes.toISOString().split('T')[0] // Solo la fecha YYYY-MM-DD
 
-  const { data: depositosData, error: depositosError } = await supabase
-    .from('depositos')
-    .select('importe')
-    .gte('fecha', inicioMesStr)
+  let ingresos_mes = 0
 
-  if (depositosError) {
-    console.error('Error obteniendo depósitos:', depositosError)
+  if (idPeriodo === null) {
+    // Todos los depósitos del mes
+    const { data: depositosData, error: depositosError } = await supabase
+      .from('depositos')
+      .select('importe')
+      .gte('fecha', inicioMesStr)
+
+    if (depositosError) {
+      console.error('Error obteniendo depósitos:', depositosError)
+    }
+
+    ingresos_mes = depositosData?.reduce((sum, d) => sum + (d.importe || 0), 0) || 0
+  } else {
+    // Sumar aplicaciones del mes para el periodo seleccionado
+    const { data: aplicacionesData, error: aplicacionesError } = await supabase
+      .from('depositos_aplicaciones')
+      .select('importe_aplicado, depositos!inner(fecha), cronogramas_pagos!inner(matriculas!inner(id_periodo))')
+      .gte('depositos.fecha', inicioMesStr)
+      .eq('cronogramas_pagos.matriculas.id_periodo', idPeriodo)
+
+    if (aplicacionesError) {
+      console.error('Error obteniendo aplicaciones:', aplicacionesError)
+    }
+
+    ingresos_mes = aplicacionesData?.reduce((sum, a) => sum + (a.importe_aplicado || 0), 0) || 0
   }
 
-  const ingresos_mes = depositosData?.reduce((sum, d) => sum + (d.importe || 0), 0) || 0
-
-  // Pagos pendientes (suma de saldos pendientes)
-  const { data: cronogramasData } = await supabase
+  // Pagos pendientes (suma de saldos pendientes) - filtrado por periodo
+  let queryCronogramas = supabase
     .from('cronogramas_pagos')
-    .select('importe, importe_pagado')
+    .select('importe, importe_pagado, matriculas!inner(id_periodo)')
     .in('estado', ['pendiente', 'vencido', 'parcial'])
+
+  if (idPeriodo !== null) {
+    queryCronogramas = queryCronogramas.eq('matriculas.id_periodo', idPeriodo)
+  }
+
+  const { data: cronogramasData } = await queryCronogramas
 
   const pagos_pendientes = cronogramasData?.reduce((sum, c) =>
     sum + ((c.importe || 0) - (c.importe_pagado || 0)), 0
@@ -80,10 +132,10 @@ export async function getStatsGenerales(): Promise<StatsGenerales> {
   }
 }
 
-export async function getPagosVencidos(): Promise<PagoAlerta[]> {
+export async function getPagosVencidos(idPeriodo: number | null = null): Promise<PagoAlerta[]> {
   const hoy = new Date().toISOString().split('T')[0]
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('cronogramas_pagos')
     .select(`
       id_cronograma_pago,
@@ -92,6 +144,7 @@ export async function getPagosVencidos(): Promise<PagoAlerta[]> {
       importe,
       importe_pagado,
       matriculas!inner(
+        id_periodo,
         id_alumno,
         celular_responsable,
         alumnos!inner(
@@ -105,7 +158,12 @@ export async function getPagosVencidos(): Promise<PagoAlerta[]> {
     `)
     .in('estado', ['pendiente', 'vencido', 'parcial'])
     .lt('fecha_vencimiento', hoy)
-    .order('fecha_vencimiento', { ascending: true })
+
+  if (idPeriodo !== null) {
+    query = query.eq('matriculas.id_periodo', idPeriodo)
+  }
+
+  const { data, error } = await query.order('fecha_vencimiento', { ascending: true })
 
   if (error) throw error
 
@@ -116,7 +174,7 @@ export async function getPagosVencidos(): Promise<PagoAlerta[]> {
     )
 
     return {
-      id_cronograma_pago: c.id_cronograma,
+      id_cronograma_pago: c.id_cronograma_pago,
       id_matricula: c.id_matricula,
       alumno_nombres: persona.nombres,
       alumno_apellidos: `${persona.ap_paterno} ${persona.ap_materno || ''}`.trim(),
@@ -129,12 +187,12 @@ export async function getPagosVencidos(): Promise<PagoAlerta[]> {
   })
 }
 
-export async function getPagosProximosVencer(): Promise<PagoAlerta[]> {
+export async function getPagosProximosVencer(idPeriodo: number | null = null): Promise<PagoAlerta[]> {
   const hoy = new Date()
   const en7Dias = new Date(hoy.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   const hoyStr = hoy.toISOString().split('T')[0]
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('cronogramas_pagos')
     .select(`
       id_cronograma_pago,
@@ -143,6 +201,7 @@ export async function getPagosProximosVencer(): Promise<PagoAlerta[]> {
       importe,
       importe_pagado,
       matriculas!inner(
+        id_periodo,
         id_alumno,
         celular_responsable,
         alumnos!inner(
@@ -157,7 +216,12 @@ export async function getPagosProximosVencer(): Promise<PagoAlerta[]> {
     .in('estado', ['pendiente', 'parcial'])
     .gte('fecha_vencimiento', hoyStr)
     .lte('fecha_vencimiento', en7Dias)
-    .order('fecha_vencimiento', { ascending: true })
+
+  if (idPeriodo !== null) {
+    query = query.eq('matriculas.id_periodo', idPeriodo)
+  }
+
+  const { data, error } = await query.order('fecha_vencimiento', { ascending: true })
 
   if (error) throw error
 
@@ -165,7 +229,7 @@ export async function getPagosProximosVencer(): Promise<PagoAlerta[]> {
     const persona = c.matriculas.alumnos.personas
 
     return {
-      id_cronograma_pago: c.id_cronograma,
+      id_cronograma_pago: c.id_cronograma_pago,
       id_matricula: c.id_matricula,
       alumno_nombres: persona.nombres,
       alumno_apellidos: `${persona.ap_paterno} ${persona.ap_materno || ''}`.trim(),
@@ -177,10 +241,10 @@ export async function getPagosProximosVencer(): Promise<PagoAlerta[]> {
   })
 }
 
-export async function getSesionesHoy(): Promise<SesionHoy[]> {
+export async function getSesionesHoy(idPeriodo: number | null = null): Promise<SesionHoy[]> {
   const hoy = new Date().toISOString().split('T')[0]
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('cronogramas_asistencias')
     .select(`
       id_cronograma_asistencia,
@@ -197,6 +261,7 @@ export async function getSesionesHoy(): Promise<SesionHoy[]> {
         horarios!inner(hora_inicio, hora_fin)
       ),
       matriculas!inner(
+        id_periodo,
         alumnos!inner(
           personas!inner(nombres, ap_paterno)
         )
@@ -205,7 +270,12 @@ export async function getSesionesHoy(): Promise<SesionHoy[]> {
     `)
     .gte('fecha_hora_inicio', `${hoy}T00:00:00`)
     .lte('fecha_hora_inicio', `${hoy}T23:59:59`)
-    .order('fecha_hora_inicio', { ascending: true })
+
+  if (idPeriodo !== null) {
+    query = query.eq('matriculas.id_periodo', idPeriodo)
+  }
+
+  const { data, error } = await query.order('fecha_hora_inicio', { ascending: true })
 
   if (error) throw error
 

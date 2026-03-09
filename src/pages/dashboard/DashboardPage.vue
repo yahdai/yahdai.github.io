@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
+  getPeriodos,
   getStatsGenerales,
   getPagosVencidos,
   getPagosProximosVencer,
   getSesionesHoy,
+  type Periodo,
   type StatsGenerales,
   type PagoAlerta,
   type SesionHoy
@@ -14,6 +16,9 @@ import {
 const router = useRouter()
 
 const loading = ref(true)
+const periodos = ref<Periodo[]>([])
+const periodoSeleccionado = ref<number | null>(null)
+
 const stats = ref<StatsGenerales>({
   matriculas_activas: 0,
   estudiantes_activos: 0,
@@ -24,14 +29,22 @@ const pagosVencidos = ref<PagoAlerta[]>([])
 const pagosProximos = ref<PagoAlerta[]>([])
 const sesionesHoy = ref<SesionHoy[]>([])
 
+async function cargarPeriodos() {
+  try {
+    periodos.value = await getPeriodos()
+  } catch (error) {
+    console.error('Error cargando periodos:', error)
+  }
+}
+
 async function cargarDatos() {
   loading.value = true
   try {
     const [statsData, vencidos, proximos, sesiones] = await Promise.all([
-      getStatsGenerales(),
-      getPagosVencidos(),
-      getPagosProximosVencer(),
-      getSesionesHoy()
+      getStatsGenerales(periodoSeleccionado.value),
+      getPagosVencidos(periodoSeleccionado.value),
+      getPagosProximosVencer(periodoSeleccionado.value),
+      getSesionesHoy(periodoSeleccionado.value)
     ])
 
     stats.value = statsData
@@ -93,19 +106,40 @@ function enviarRecordatorio(pago: PagoAlerta) {
   window.open(url, '_blank')
 }
 
-onMounted(cargarDatos)
+onMounted(() => {
+  cargarPeriodos()
+  cargarDatos()
+})
+
+// Recargar datos cuando cambia el periodo seleccionado
+watch(periodoSeleccionado, () => {
+  cargarDatos()
+})
 </script>
 
 <template>
   <div class="p-3 sm:p-4 lg:p-6">
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 gap-2">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 gap-3">
       <h1 class="text-xl sm:text-2xl font-bold">Dashboard</h1>
-      <button class="btn btn-sm btn-ghost" @click="cargarDatos" :disabled="loading">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" :class="{ 'animate-spin': loading }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        Actualizar
-      </button>
+
+      <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <select
+          v-model="periodoSeleccionado"
+          class="select select-bordered select-sm w-full sm:w-auto"
+        >
+          <option :value="null">Todos los periodos</option>
+          <option v-for="periodo in periodos" :key="periodo.id_periodo" :value="periodo.id_periodo">
+            {{ periodo.nombre }}
+          </option>
+        </select>
+
+        <button class="btn btn-sm btn-ghost w-full sm:w-auto" @click="cargarDatos" :disabled="loading">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" :class="{ 'animate-spin': loading }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Actualizar
+        </button>
+      </div>
     </div>
 
     <!-- Stats Principales -->

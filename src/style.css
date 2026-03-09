@@ -1,24 +1,24 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
-/* Tema personalizado Yahdai Academia basado en colores del logo */
-/* Orange: #F0AB00 = HSL(41, 100%, 47%) */
-/* Navy Blue: #1B365D = HSL(214, 55%, 23%) */
+/* Tema Yahdai Academia - Colores del logo */
+/* Primary: #F0AB00 (Naranja/Dorado) */
+/* Secondary: #1B365D (Azul Marino) */
 
-[data-theme="yahdai"] {
+html[data-theme="yahdai"] {
   color-scheme: light;
 
-  /* Primary - Orange/Gold del logo */
+  /* Primary - Naranja del logo */
   --p: 41 100% 47%;
   --pf: 41 100% 37%;
   --pc: 0 0% 100%;
 
-  /* Secondary - Navy Blue del logo */
+  /* Secondary - Azul Marino del logo */
   --s: 214 55% 23%;
   --sf: 214 55% 33%;
   --sc: 0 0% 100%;
 
-  /* Accent - Orange del logo */
+  /* Accent - Naranja del logo */
   --a: 41 100% 47%;
   --af: 41 100% 37%;
   --ac: 0 0% 100%;
@@ -28,25 +28,22 @@
   --nf: 220 13% 13%;
   --nc: 0 0% 100%;
 
-  /* Base */
+  /* Base colors */
   --b1: 0 0% 100%;
   --b2: 0 0% 96%;
   --b3: 0 0% 88%;
   --bc: 220 13% 18%;
 
-  /* Info */
+  /* State colors */
   --in: 213 94% 68%;
   --inc: 0 0% 100%;
 
-  /* Success */
   --su: 142 76% 36%;
   --suc: 0 0% 100%;
 
-  /* Warning */
   --wa: 38 92% 50%;
   --wac: 0 0% 100%;
 
-  /* Error */
   --er: 0 72% 51%;
   --erc: 0 0% 100%;
 

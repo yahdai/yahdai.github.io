@@ -417,12 +417,22 @@ Abrir Chrome DevTools > Application tab > Service Workers / Manifest
 
 El dashboard muestra un resumen ejecutivo de la academia con las métricas más importantes.
 
+### Filtro por Periodo
+
+- **Selector de Periodo**: Dropdown en el header que permite filtrar todos los datos del dashboard
+  - **Todos los periodos** (opción por defecto): Muestra datos de todas las matrículas
+  - **Periodo específico**: Filtra por periodo académico seleccionado (ej: "2024-I", "2024-II")
+- **Actualización reactiva**: Al cambiar el periodo, todos los datos se recargan automáticamente
+- **Alcance del filtro**: Afecta stats, pagos vencidos, pagos próximos y sesiones de hoy
+
 ### Stats Principales (4 cards superiores)
 
-1. **Estudiantes Activos**: Count distinct de alumnos con matrículas en estado "activo"
-2. **Matrículas Activas**: Total de matrículas con estado "activo"
-3. **Ingresos del Mes**: Suma de depósitos del mes actual (excluyendo anulados)
-4. **Pagos Pendientes**: Suma de saldos pendientes en cronogramas (pendiente/vencido/parcial)
+1. **Estudiantes Activos**: Count distinct de alumnos con matrículas en estado "activo" (filtrado por periodo)
+2. **Matrículas Activas**: Total de matrículas con estado "activo" (filtrado por periodo)
+3. **Ingresos del Mes**:
+   - Sin filtro: Suma de todos los depósitos del mes actual
+   - Con filtro: Suma de aplicaciones de pagos del mes para el periodo seleccionado
+4. **Pagos Pendientes**: Suma de saldos pendientes en cronogramas (pendiente/vencido/parcial, filtrado por periodo)
 
 ### Alertas de Pagos
 
@@ -467,11 +477,17 @@ Enlaces directos a las operaciones más frecuentes:
 
 **Funciones principales:**
 ```typescript
-getStatsGenerales(): Promise<StatsGenerales>
-getPagosVencidos(): Promise<PagoAlerta[]>
-getPagosProximosVencer(): Promise<PagoAlerta[]>
-getSesionesHoy(): Promise<SesionHoy[]>
+getPeriodos(): Promise<Periodo[]>
+getStatsGenerales(idPeriodo: number | null = null): Promise<StatsGenerales>
+getPagosVencidos(idPeriodo: number | null = null): Promise<PagoAlerta[]>
+getPagosProximosVencer(idPeriodo: number | null = null): Promise<PagoAlerta[]>
+getSesionesHoy(idPeriodo: number | null = null): Promise<SesionHoy[]>
 ```
+
+**Notas sobre filtrado:**
+- `idPeriodo = null`: Sin filtro, muestra todos los datos
+- `idPeriodo = número`: Filtra por el periodo especificado
+- El filtro se aplica a nivel de base de datos mediante joins con `matriculas.id_periodo`
 
 ## Lógica de Asistencias
 
