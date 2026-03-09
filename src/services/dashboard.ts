@@ -47,12 +47,18 @@ export async function getStatsGenerales(): Promise<StatsGenerales> {
   const estudiantes_activos = new Set(estudiantesData?.map(m => m.id_alumno) || []).size
 
   // Ingresos del mes actual
-  const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-  const { data: depositosData } = await supabase
+  const hoy = new Date()
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+  const inicioMesStr = inicioMes.toISOString().split('T')[0] // Solo la fecha YYYY-MM-DD
+
+  const { data: depositosData, error: depositosError } = await supabase
     .from('depositos')
     .select('importe')
-    .gte('fecha', inicioMes)
-    .neq('estado', 'anulado')
+    .gte('fecha', inicioMesStr)
+
+  if (depositosError) {
+    console.error('Error obteniendo depósitos:', depositosError)
+  }
 
   const ingresos_mes = depositosData?.reduce((sum, d) => sum + (d.importe || 0), 0) || 0
 
