@@ -15,6 +15,12 @@ export interface MatriculaConRelaciones extends Matricula {
     id_periodo: number
     nombre: string
   }
+  responsable?: {
+    id_persona: number
+    nombres: string
+    ap_paterno: string
+    num_documento: string | null
+  } | null
   matriculas_detalles: {
     id_matricula_detalle: number
     especialidades: {
@@ -109,8 +115,28 @@ export async function getMatriculas(params: {
 
   if (error) throw error
 
+  // Obtener datos de responsables
+  const matriculasConResponsables: MatriculaConRelaciones[] = []
+
+  for (const m of data || []) {
+    let responsable: any = null
+    if (!m.es_autoresponsable && m.id_persona_responsable) {
+      const { data: respData } = await supabase
+        .from('personas')
+        .select('id_persona, nombres, ap_paterno, num_documento')
+        .eq('id_persona', m.id_persona_responsable)
+        .single()
+      responsable = respData
+    }
+
+    matriculasConResponsables.push({
+      ...m,
+      responsable
+    } as MatriculaConRelaciones)
+  }
+
   return {
-    data: data as MatriculaConRelaciones[],
+    data: matriculasConResponsables,
     total: count || 0,
     page,
     limit,
@@ -159,6 +185,7 @@ export interface MatriculaDetallada {
   celular_alumno: string | null
   correo_alumno: string | null
   direccion_alumno: string | null
+  es_autoresponsable: boolean
   id_persona_responsable: number | null
   celular_responsable: string | null
   correo_responsable: string | null

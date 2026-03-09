@@ -49,6 +49,12 @@ export interface MatriculaPagoResumen {
     id_periodo: number
     nombre: string
   }
+  es_autoresponsable: boolean
+  celular_responsable: string | null
+  correo_responsable: string | null
+  celular_alumno: string | null
+  responsable_nombres: string | null
+  responsable_ap_paterno: string | null
   total_cronograma: number
   total_pagado: number
   total_pendiente: number
@@ -83,6 +89,11 @@ export async function getMatriculasConPagos(params: {
         id_periodo,
         id_alumno,
         estado,
+        es_autoresponsable,
+        id_persona_responsable,
+        celular_responsable,
+        correo_responsable,
+        celular_alumno,
         alumnos!inner (
           id_alumno,
           personas!inner (
@@ -141,6 +152,21 @@ export async function getMatriculasConPagos(params: {
         ? matricula.periodos[0]
         : matricula.periodos
 
+      // Obtener datos del responsable si existe
+      let responsableNombres: string | null = null
+      let responsableApPaterno: string | null = null
+      if (!matricula.es_autoresponsable && matricula.id_persona_responsable) {
+        const { data: respData } = await supabase
+          .from('personas')
+          .select('nombres, ap_paterno')
+          .eq('id_persona', matricula.id_persona_responsable)
+          .single()
+        if (respData) {
+          responsableNombres = respData.nombres
+          responsableApPaterno = respData.ap_paterno
+        }
+      }
+
       matriculasConResumen.push({
         id_matricula: matricula.id_matricula,
         alumno: {
@@ -154,6 +180,12 @@ export async function getMatriculasConPagos(params: {
           id_periodo: periodo.id_periodo,
           nombre: periodo.nombre
         },
+        es_autoresponsable: matricula.es_autoresponsable || false,
+        celular_responsable: matricula.celular_responsable || null,
+        correo_responsable: matricula.correo_responsable || null,
+        celular_alumno: matricula.celular_alumno || null,
+        responsable_nombres: responsableNombres,
+        responsable_ap_paterno: responsableApPaterno,
         ...resumen
       })
     }

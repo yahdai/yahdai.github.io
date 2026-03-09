@@ -5,6 +5,7 @@ import {
   getPeriodosActivos,
   getEspecialidades,
   marcarAsistencia,
+  eliminarAsistencia,
   generarUrlWhatsApp,
   generarMensajeRecordatorio
 } from '@/services/asistencias'
@@ -224,6 +225,24 @@ async function marcar(sesion: SesionReporte, estado: 'presente' | 'tardanza' | '
   }
 }
 
+async function eliminar(sesion: SesionReporte) {
+  if (!sesion.asistencia) return
+
+  const confirmar = confirm(`¿Está seguro de eliminar la asistencia de ${sesion.alumno.nombres}?`)
+  if (!confirmar) return
+
+  loading.value = true
+  try {
+    await eliminarAsistencia(sesion.asistencia.id_asistencia)
+    await cargarSesiones()
+  } catch (err: unknown) {
+    console.error('Error eliminando asistencia:', err)
+    error.value = 'Error al eliminar asistencia'
+  } finally {
+    loading.value = false
+  }
+}
+
 // Recargar al cambiar fecha o filtros
 watch(fechaSeleccionada, cargarSesiones)
 watch(filtros, cargarSesiones, { deep: true })
@@ -407,6 +426,16 @@ onMounted(cargarDatos)
                 <span class="badge" :class="getAsistenciaBadgeClass(sesion.asistencia.estado)">
                   {{ getAsistenciaLabel(sesion.asistencia.estado) }}
                 </span>
+                <button
+                  class="btn btn-ghost btn-xs btn-circle text-error"
+                  @click="eliminar(sesion)"
+                  :disabled="loading"
+                  title="Eliminar asistencia"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
               </template>
 
               <!-- Pendiente - acciones -->

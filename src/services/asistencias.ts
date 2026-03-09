@@ -212,6 +212,91 @@ export async function actualizarAsistencia(idAsistencia: number, estado: string)
   return data
 }
 
+export async function eliminarAsistencia(idAsistencia: number) {
+  const { error } = await supabase
+    .from('asistencias')
+    .delete()
+    .eq('id_asistencia', idAsistencia)
+
+  if (error) throw error
+  return true
+}
+
+export interface AsistenciaDetalle {
+  id_asistencia: number
+  id_cronograma_asistencia: number
+  fecha_hora_base: string
+  fecha_hora_real: string | null
+  estado: 'pendiente' | 'presente' | 'tardanza' | 'ausente' | 'justificado'
+  especialidad: string
+  profesor: string
+}
+
+export async function getAsistenciasAlumno(idAlumno: number, idEspecialidad?: number): Promise<AsistenciaDetalle[]> {
+  try {
+    let query = supabase
+      .from('asistencias')
+      .select(`
+        id_asistencia,
+        id_cronograma_asistencia,
+        fecha_hora_base,
+        fecha_hora_real,
+        estado,
+        matriculas_detalles!inner (
+          id_especialidad,
+          id_profesor,
+          especialidades (nombre),
+          matriculas!inner (id_alumno)
+        )
+      `)
+      .eq('id_alumno', idAlumno)
+      .order('fecha_hora_base', { ascending: false })
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    const asistencias: AsistenciaDetalle[] = []
+
+    for (const a of data || []) {
+      const detalle = a.matriculas_detalles as any
+      const especialidad = detalle?.especialidades
+
+      // Filtrar por especialidad si se especifica
+      if (idEspecialidad && detalle?.id_especialidad !== idEspecialidad) continue
+
+      // Obtener nombre del profesor
+      let profesorNombre = '-'
+      if (detalle?.id_profesor) {
+        const { data: profData } = await supabase
+          .from('personas')
+          .select('nombres, ap_paterno')
+          .eq('id_persona', detalle.id_profesor)
+          .single()
+
+        if (profData) {
+          profesorNombre = `${profData.nombres} ${profData.ap_paterno}`
+        }
+      }
+
+      asistencias.push({
+        id_asistencia: a.id_asistencia,
+        id_cronograma_asistencia: a.id_cronograma_asistencia,
+        fecha_hora_base: a.fecha_hora_base,
+        fecha_hora_real: a.fecha_hora_real,
+        estado: a.estado as AsistenciaDetalle['estado'],
+        especialidad: especialidad?.nombre || '-',
+        profesor: profesorNombre
+      })
+    }
+
+    return asistencias
+  } catch (error) {
+    console.error('Error en getAsistenciasAlumno:', error)
+    throw error
+  }
+}
+
 // ==========================================
 // FUNCIONES PARA REPORTE DE ASISTENCIAS
 // ==========================================

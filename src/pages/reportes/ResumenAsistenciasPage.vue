@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { getResumenAsistenciasAlumnos, getPeriodosActivos, getEspecialidades } from '@/services/asistencias'
-import type { AlumnoResumen, FiltrosReporte } from '@/services/asistencias'
+import {
+  getResumenAsistenciasAlumnos,
+  getPeriodosActivos,
+  getEspecialidades,
+  getAsistenciasAlumno,
+  eliminarAsistencia
+} from '@/services/asistencias'
+import type { AlumnoResumen, FiltrosReporte, AsistenciaDetalle } from '@/services/asistencias'
 
 // Estados
 const alumnos = ref<AlumnoResumen[]>([])
@@ -21,6 +27,12 @@ const filtros = ref<FiltrosReporte>({
 
 // Alumno expandido para ver detalle
 const alumnoExpandido = ref<number | null>(null)
+
+// Modal de asistencias
+const showModal = ref(false)
+const alumnoSeleccionado = ref<AlumnoResumen | null>(null)
+const asistenciasDetalle = ref<AsistenciaDetalle[]>([])
+const loadingAsistencias = ref(false)
 
 // Estadísticas
 const estadisticas = computed(() => {
@@ -110,6 +122,75 @@ async function cargarAlumnos() {
 
 async function aplicarFiltros() {
   await cargarAlumnos()
+}
+
+async function verAsistencias(alumno: AlumnoResumen) {
+  alumnoSeleccionado.value = alumno
+  showModal.value = true
+  loadingAsistencias.value = true
+
+  try {
+    asistenciasDetalle.value = await getAsistenciasAlumno(alumno.id_alumno)
+  } catch (err) {
+    console.error('Error cargando asistencias:', err)
+    asistenciasDetalle.value = []
+  } finally {
+    loadingAsistencias.value = false
+  }
+}
+
+async function eliminarAsistenciaDetalle(asistencia: AsistenciaDetalle) {
+  const confirmar = confirm(`¿Está seguro de eliminar esta asistencia del ${formatFecha(asistencia.fecha_hora_base)}?`)
+  if (!confirmar) return
+
+  loadingAsistencias.value = true
+  try {
+    await eliminarAsistencia(asistencia.id_asistencia)
+    // Recargar asistencias del modal
+    if (alumnoSeleccionado.value) {
+      asistenciasDetalle.value = await getAsistenciasAlumno(alumnoSeleccionado.value.id_alumno)
+    }
+    // Recargar lista principal para actualizar estadísticas
+    await cargarAlumnos()
+  } catch (err) {
+    console.error('Error eliminando asistencia:', err)
+    alert('Error al eliminar la asistencia')
+  } finally {
+    loadingAsistencias.value = false
+  }
+}
+
+function cerrarModal() {
+  showModal.value = false
+  alumnoSeleccionado.value = null
+  asistenciasDetalle.value = []
+}
+
+function formatFecha(fecha: string): string {
+  return new Date(fecha).toLocaleDateString('es-PE', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  })
+}
+
+function formatHora(fecha: string): string {
+  return new Date(fecha).toLocaleTimeString('es-PE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+}
+
+function getAsistenciaBadgeClass(estado: string) {
+  switch (estado) {
+    case 'presente': return 'badge-success'
+    case 'tardanza': return 'badge-warning'
+    case 'ausente': return 'badge-error'
+    case 'justificado': return 'badge-ghost'
+    default: return 'badge-neutral'
+  }
 }
 
 onMounted(cargarDatos)
@@ -320,6 +401,16 @@ onMounted(cargarDatos)
                 <span class="font-semibold ml-1">{{ alumno.profesor }}</span>
               </div>
             </div>
+            <button
+              class="btn btn-primary btn-sm w-full mt-3"
+              @click="verAsistencias(alumno)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              Ver asistencias
+            </button>
           </div>
         </div>
       </div>
@@ -338,6 +429,7 @@ onMounted(cargarDatos)
             <th class="text-center">A</th>
             <th class="text-center">%</th>
             <th class="text-center">Estado</th>
+            <th class="text-center">Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -387,6 +479,18 @@ onMounted(cargarDatos)
                 {{ getEstadoBadge(alumno.estado).label }}
               </span>
             </td>
+            <td class="text-center">
+              <button
+                class="btn btn-ghost btn-xs"
+                @click="verAsistencias(alumno)"
+                title="Ver asistencias"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -403,5 +507,71 @@ onMounted(cargarDatos)
         <p class="text-sm text-base-content/60">No se encontraron alumnos con los filtros seleccionados</p>
       </div>
     </div>
+
+    <!-- Modal de Asistencias -->
+    <dialog :class="{ 'modal modal-open': showModal, 'modal': !showModal }">
+      <div class="modal-box max-w-2xl">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-bold text-lg">Asistencias</h3>
+            <p v-if="alumnoSeleccionado" class="text-sm text-base-content/60">
+              {{ getFullName(alumnoSeleccionado) }} - {{ alumnoSeleccionado.especialidad }}
+            </p>
+          </div>
+          <button class="btn btn-sm btn-circle btn-ghost" @click="cerrarModal">✕</button>
+        </div>
+
+        <!-- Loading -->
+        <div v-if="loadingAsistencias" class="flex justify-center py-8">
+          <span class="loading loading-spinner loading-lg text-primary"></span>
+        </div>
+
+        <!-- Lista de asistencias -->
+        <div v-else-if="asistenciasDetalle.length > 0" class="space-y-2 max-h-96 overflow-y-auto">
+          <div
+            v-for="asistencia in asistenciasDetalle"
+            :key="asistencia.id_asistencia"
+            class="flex items-center justify-between p-3 bg-base-200 rounded-lg"
+          >
+            <div class="flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-semibold text-sm">{{ formatFecha(asistencia.fecha_hora_base) }}</span>
+                <span class="text-xs text-base-content/60">{{ formatHora(asistencia.fecha_hora_base) }}</span>
+                <span class="badge badge-sm" :class="getAsistenciaBadgeClass(asistencia.estado)">
+                  {{ asistencia.estado.toUpperCase() }}
+                </span>
+              </div>
+              <div class="text-xs text-base-content/60 mt-1">
+                {{ asistencia.especialidad }} • {{ asistencia.profesor }}
+              </div>
+            </div>
+            <button
+              class="btn btn-ghost btn-xs btn-circle text-error"
+              @click="eliminarAsistenciaDetalle(asistencia)"
+              :disabled="loadingAsistencias"
+              title="Eliminar asistencia"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sin asistencias -->
+        <div v-else class="text-center py-8">
+          <p class="text-sm text-base-content/60">No hay asistencias registradas</p>
+        </div>
+
+        <!-- Footer -->
+        <div class="modal-action">
+          <button class="btn btn-sm" @click="cerrarModal">Cerrar</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="cerrarModal">close</button>
+      </form>
+    </dialog>
   </div>
 </template>

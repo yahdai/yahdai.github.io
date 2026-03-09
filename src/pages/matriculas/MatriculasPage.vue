@@ -225,6 +225,7 @@ onMounted(async () => {
               <tr>
                 <th>ESTUDIANTE</th>
                 <th>ESPECIALIDAD</th>
+                <th>RESPONSABLE</th>
                 <th>FECHA REGISTRO</th>
                 <th>ESTADO</th>
                 <th>ACCIONES</th>
@@ -232,12 +233,12 @@ onMounted(async () => {
             </thead>
             <tbody>
               <tr v-if="loading">
-                <td colspan="5" class="text-center py-8">
+                <td colspan="6" class="text-center py-8">
                   <span class="loading loading-spinner loading-md"></span>
                 </td>
               </tr>
               <tr v-else-if="matriculas.length === 0">
-                <td colspan="5" class="text-center py-8 text-base-content/60">
+                <td colspan="6" class="text-center py-8 text-base-content/60">
                   No hay matrículas registradas
                 </td>
               </tr>
@@ -258,6 +259,21 @@ onMounted(async () => {
                   </div>
                 </td>
                 <td>{{ getEspecialidad(matricula) }}</td>
+                <td>
+                  <template v-if="matricula.es_autoresponsable">
+                    <span class="badge badge-ghost badge-xs">Autoresponsable</span>
+                  </template>
+                  <template v-else-if="matricula.responsable">
+                    <div class="text-sm">{{ matricula.responsable.nombres }} {{ matricula.responsable.ap_paterno }}</div>
+                    <div class="text-xs text-base-content/60">
+                      <div v-if="matricula.celular_responsable">{{ matricula.celular_responsable }}</div>
+                      <div v-if="matricula.correo_responsable" class="truncate max-w-32">{{ matricula.correo_responsable }}</div>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <span class="text-base-content/40">-</span>
+                  </template>
+                </td>
                 <td>{{ formatDate(matricula.fecha_registro) }}</td>
                 <td>
                   <span class="badge" :class="estadoBadgeClass(matricula.estado)">
@@ -368,6 +384,14 @@ onMounted(async () => {
             <div class="flex justify-between">
               <span class="text-base-content/60">Fecha:</span>
               <span class="font-medium">{{ formatDate(matricula.fecha_registro) }}</span>
+            </div>
+            <div v-if="!matricula.es_autoresponsable && matricula.responsable" class="pt-1">
+              <span class="text-base-content/60">Responsable:</span>
+              <div class="font-medium text-xs">
+                <div>{{ matricula.responsable.nombres }} {{ matricula.responsable.ap_paterno }}</div>
+                <div v-if="matricula.celular_responsable" class="text-base-content/60">Tel: {{ matricula.celular_responsable }}</div>
+                <div v-if="matricula.correo_responsable" class="text-base-content/60 truncate">{{ matricula.correo_responsable }}</div>
+              </div>
             </div>
           </div>
 
