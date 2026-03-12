@@ -1,9 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { TIMEZONE } from '@/utils/timezone'
 import TabMarcadoRapido from './TabMarcadoRapido.vue'
 import TabSesionesDia from './TabSesionesDia.vue'
 
 const tabActivo = ref<'marcado' | 'sesiones'>('marcado')
+
+// Fecha actual formateada en zona horaria de Lima
+const fechaActual = computed(() => {
+  return new Date().toLocaleDateString('es-PE', {
+    timeZone: TIMEZONE,
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+})
 
 const tabs = [
   { id: 'marcado', label: 'Marcado', labelMobile: 'Marcar', icon: 'M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z' },
@@ -17,7 +29,7 @@ const tabs = [
     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
       <h1 class="text-lg sm:text-xl font-bold">Asistencias</h1>
       <div class="text-[10px] sm:text-xs text-base-content/60">
-        {{ new Date().toLocaleDateString('es-PE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}
+        {{ fechaActual }}
       </div>
     </div>
 

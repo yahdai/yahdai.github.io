@@ -11,6 +11,7 @@ import {
   type CronogramaPagoDetalle
 } from '@/services/pagos'
 import { supabase } from '@/services/supabase'
+import { getFechaHoy, TIMEZONE } from '@/utils/timezone'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,7 +38,7 @@ const error = ref<string | null>(null)
 const showModalPago = ref(false)
 const pagoForm = ref({
   id_medio_deposito: null as number | null,
-  fecha: new Date().toISOString().split('T')[0],
+  fecha: getFechaHoy(),
   importe: 0,
   numero_operacion: '',
   observaciones: '',
@@ -57,7 +58,7 @@ const formatCurrency = (value: number) => {
 const formatDate = (dateString: string | null) => {
   if (!dateString) return '-'
   const date = new Date(dateString)
-  return date.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' })
+  return date.toLocaleDateString('es-PE', { timeZone: TIMEZONE, day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 const formatDateTime = (dateString: string) => {
@@ -177,7 +178,7 @@ function abrirModalPago() {
   // Resetear formulario
   pagoForm.value = {
     id_medio_deposito: mediosDeposito.value.length > 0 ? mediosDeposito.value[0].id_medio_deposito : null,
-    fecha: new Date().toISOString().split('T')[0],
+    fecha: getFechaHoy(),
     importe: 0,
     numero_operacion: '',
     observaciones: '',

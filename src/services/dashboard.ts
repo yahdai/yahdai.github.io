@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getFechaHoy, getInicioMes, getFechaFutura, diasDiferencia } from '@/utils/timezone'
 
 export interface Periodo {
   id_periodo: number
@@ -74,10 +75,8 @@ export async function getStatsGenerales(idPeriodo: number | null = null): Promis
 
   const estudiantes_activos = new Set(estudiantesData?.map(m => m.id_alumno) || []).size
 
-  // Ingresos del mes actual
-  const hoy = new Date()
-  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
-  const inicioMesStr = inicioMes.toISOString().split('T')[0] // Solo la fecha YYYY-MM-DD
+  // Ingresos del mes actual (usando zona horaria America/Lima)
+  const inicioMesStr = getInicioMes()
 
   let ingresos_mes = 0
 
@@ -133,7 +132,7 @@ export async function getStatsGenerales(idPeriodo: number | null = null): Promis
 }
 
 export async function getPagosVencidos(idPeriodo: number | null = null): Promise<PagoAlerta[]> {
-  const hoy = new Date().toISOString().split('T')[0]
+  const hoy = getFechaHoy()
 
   let query = supabase
     .from('cronogramas_pagos')
@@ -169,9 +168,6 @@ export async function getPagosVencidos(idPeriodo: number | null = null): Promise
 
   return (data || []).map((c: any) => {
     const persona = c.matriculas.alumnos.personas
-    const diasAtraso = Math.floor(
-      (new Date().getTime() - new Date(c.fecha_vencimiento).getTime()) / (1000 * 60 * 60 * 24)
-    )
 
     return {
       id_cronograma_pago: c.id_cronograma_pago,
@@ -181,16 +177,15 @@ export async function getPagosVencidos(idPeriodo: number | null = null): Promise
       fecha_vencimiento: c.fecha_vencimiento,
       importe: c.importe,
       importe_pagado: c.importe_pagado || 0,
-      dias_atraso: diasAtraso,
+      dias_atraso: diasDiferencia(c.fecha_vencimiento),
       celular_responsable: c.matriculas.celular_responsable
     }
   })
 }
 
 export async function getPagosProximosVencer(idPeriodo: number | null = null): Promise<PagoAlerta[]> {
-  const hoy = new Date()
-  const en7Dias = new Date(hoy.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  const hoyStr = hoy.toISOString().split('T')[0]
+  const hoyStr = getFechaHoy()
+  const en7Dias = getFechaFutura(7)
 
   let query = supabase
     .from('cronogramas_pagos')
@@ -242,7 +237,7 @@ export async function getPagosProximosVencer(idPeriodo: number | null = null): P
 }
 
 export async function getSesionesHoy(idPeriodo: number | null = null): Promise<SesionHoy[]> {
-  const hoy = new Date().toISOString().split('T')[0]
+  const hoy = getFechaHoy()
 
   let query = supabase
     .from('cronogramas_asistencias')

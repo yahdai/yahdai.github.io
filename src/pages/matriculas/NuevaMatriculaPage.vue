@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/services/supabase'
 import { validarDocumentoDuplicado } from '@/services/catalogos'
+import { getAhoraISO } from '@/utils/timezone'
 import type { Persona, TipoDocumento } from '@/types/database.types'
 
 const router = useRouter()
@@ -755,7 +756,7 @@ async function submitMatricula() {
           celular: studentForm.value.celular || null,
           sexo: studentForm.value.sexo || null,
           direccion: studentForm.value.direccion || null,
-          updated_at: new Date().toISOString()
+          updated_at: getAhoraISO()
         })
         .eq('id_persona', personaId)
 
@@ -838,7 +839,7 @@ async function submitMatricula() {
             ap_materno: responsableForm.value.ap_materno || null,
             celular: responsableForm.value.celular || null,
             correo: responsableForm.value.correo || null,
-            updated_at: new Date().toISOString()
+            updated_at: getAhoraISO()
           })
           .eq('id_persona', responsablePersonaId)
 

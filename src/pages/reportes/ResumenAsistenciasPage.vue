@@ -8,6 +8,7 @@ import {
   eliminarAsistencia
 } from '@/services/asistencias'
 import type { AlumnoResumen, FiltrosReporte, AsistenciaDetalle } from '@/services/asistencias'
+import { formatearFechaCorta, formatearHora } from '@/utils/timezone'
 
 // Estados
 const alumnos = ref<AlumnoResumen[]>([])
@@ -167,20 +168,11 @@ function cerrarModal() {
 }
 
 function formatFecha(fecha: string): string {
-  return new Date(fecha).toLocaleDateString('es-PE', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  })
+  return formatearFechaCorta(fecha)
 }
 
 function formatHora(fecha: string): string {
-  return new Date(fecha).toLocaleTimeString('es-PE', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  })
+  return formatearHora(fecha)
 }
 
 function getAsistenciaBadgeClass(estado: string) {

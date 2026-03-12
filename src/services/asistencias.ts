@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getAhoraISO } from '@/utils/timezone'
 
 export interface AlumnoAsistencia {
   id_alumno: number
@@ -176,7 +177,7 @@ export async function marcarAsistencia(params: {
   fecha_hora_base: string
   estado: 'presente' | 'tardanza' | 'ausente' | 'justificado'
 }) {
-  const ahora = new Date().toISOString()
+  const ahora = getAhoraISO()
 
   const { data, error } = await supabase
     .from('asistencias')
@@ -202,7 +203,7 @@ export async function actualizarAsistencia(idAsistencia: number, estado: string)
     .from('asistencias')
     .update({
       estado,
-      updated_at: new Date().toISOString()
+      updated_at: getAhoraISO()
     })
     .eq('id_asistencia', idAsistencia)
     .select()
@@ -502,8 +503,10 @@ export async function getResumenAsistenciasAlumnos(filtros: FiltrosReporte = {})
 }
 
 // Obtener todas las sesiones de una fecha específica
+// Nota: fecha debe estar en formato YYYY-MM-DD (usar getFechaHoy() para obtener la fecha actual)
 export async function getSesionesPorFecha(fecha: string, filtros: FiltrosReporte = {}): Promise<SesionReporte[]> {
   try {
+    // Usar la fecha proporcionada (ya debe estar en zona horaria correcta)
     const fechaInicio = `${fecha}T00:00:00`
     const fechaFin = `${fecha}T23:59:59`
 

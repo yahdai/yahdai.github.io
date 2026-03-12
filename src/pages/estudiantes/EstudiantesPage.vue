@@ -11,6 +11,7 @@ import { getMatriculaById } from '@/services/matriculas'
 import type { MatriculaDetallada } from '@/services/matriculas'
 import MatriculaViewModal from '@/pages/matriculas/MatriculaViewModal.vue'
 import * as XLSX from 'xlsx'
+import { TIMEZONE } from '@/utils/timezone'
 
 // Estados
 const estudiantes = ref<Estudiante[]>([])
@@ -208,7 +209,7 @@ async function exportarExcel() {
     XLSX.utils.book_append_sheet(wb, ws, 'Estudiantes')
 
     // Generar nombre del archivo
-    const fecha = new Date().toLocaleDateString('es-PE').replace(/\//g, '-')
+    const fecha = new Date().toLocaleDateString('es-PE', { timeZone: TIMEZONE }).replace(/\//g, '-')
     const filename = `Estudiantes_${fecha}.xlsx`
 
     // Descargar archivo

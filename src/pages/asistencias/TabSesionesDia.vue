@@ -10,14 +10,15 @@ import {
   generarMensajeRecordatorio
 } from '@/services/asistencias'
 import type { SesionReporte, FiltrosReporte } from '@/services/asistencias'
+import { getFechaHoy, getAhora, formatearHora, formatearFechaDisplay } from '@/utils/timezone'
 
 // Estados
 const sesiones = ref<SesionReporte[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 
-// Fecha seleccionada
-const fechaSeleccionada = ref(new Date().toISOString().split('T')[0])
+// Fecha seleccionada (en zona horaria America/Lima)
+const fechaSeleccionada = ref(getFechaHoy())
 
 // Filtros
 const periodos = ref<{ id_periodo: number; nombre: string }[]>([])
@@ -28,10 +29,10 @@ const filtros = ref<FiltrosReporte>({
   soloPendientes: false
 })
 
-// Hora actual
-const horaActual = ref(new Date())
+// Hora actual (en zona horaria America/Lima)
+const horaActual = ref(getAhora())
 setInterval(() => {
-  horaActual.value = new Date()
+  horaActual.value = getAhora()
 }, 30000)
 
 // Estadísticas del día
@@ -55,22 +56,12 @@ function getFullName(alumno: { nombres: string; ap_paterno: string; ap_materno?:
 }
 
 function formatTime(dateString: string): string {
-  const date = new Date(dateString)
-  return date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return formatearHora(dateString)
 }
 
-function formatFechaDisplay(fecha: string): string {
-  const date = new Date(fecha + 'T12:00:00')
-  return date.toLocaleDateString('es-PE', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long'
-  })
-}
 
 function esHoy(fecha: string): boolean {
-  const hoy = new Date().toISOString().split('T')[0]
-  return fecha === hoy
+  return fecha === getFechaHoy()
 }
 
 function getEstadoSesion(sesion: SesionReporte): 'finalizado' | 'en-curso' | 'proximo' | 'futuro' {
@@ -133,13 +124,16 @@ function puedeMarcar(sesion: SesionReporte): boolean {
 }
 
 function cambiarFecha(dias: number) {
-  const fecha = new Date(fechaSeleccionada.value)
+  const fecha = new Date(fechaSeleccionada.value + 'T12:00:00')
   fecha.setDate(fecha.getDate() + dias)
-  fechaSeleccionada.value = fecha.toISOString().split('T')[0]
+  const year = fecha.getFullYear()
+  const month = String(fecha.getMonth() + 1).padStart(2, '0')
+  const day = String(fecha.getDate()).padStart(2, '0')
+  fechaSeleccionada.value = `${year}-${month}-${day}`
 }
 
 function irAHoy() {
-  fechaSeleccionada.value = new Date().toISOString().split('T')[0]
+  fechaSeleccionada.value = getFechaHoy()
 }
 
 function enviarWhatsApp(sesion: SesionReporte) {
@@ -150,7 +144,7 @@ function enviarWhatsApp(sesion: SesionReporte) {
     sesion.alumno.nombres,
     sesion.especialidad.nombre,
     hora,
-    esHoy(fechaSeleccionada.value) ? undefined : formatFechaDisplay(fechaSeleccionada.value)
+    esHoy(fechaSeleccionada.value) ? undefined : formatearFechaDisplay(fechaSeleccionada.value)
   )
 
   const url = generarUrlWhatsApp(sesion.celular_responsable, mensaje)
@@ -287,7 +281,7 @@ onMounted(cargarDatos)
 
           <!-- Fecha display -->
           <div class="flex-1 text-center">
-            <span class="font-bold capitalize">{{ formatFechaDisplay(fechaSeleccionada) }}</span>
+            <span class="font-bold capitalize">{{ formatearFechaDisplay(fechaSeleccionada) }}</span>
             <span v-if="esHoy(fechaSeleccionada)" class="badge badge-primary badge-sm ml-2">HOY</span>
           </div>
 

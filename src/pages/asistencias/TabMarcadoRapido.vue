@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { buscarAlumnos, getSesionesDelDia, marcarAsistencia, actualizarAsistencia } from '@/services/asistencias'
 import type { AlumnoAsistencia, SesionDelDia } from '@/services/asistencias'
+import { getFechaHoy, getAhora, getAhoraISO, formatearHora, formatearFechaHora, formatearFechaCompleta } from '@/utils/timezone'
 
 // Estados principales
 const searchInput = ref('')
@@ -12,16 +13,15 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const ultimoAcceso = ref<string | null>(null)
 
-// Fecha seleccionada (por defecto hoy)
+// Fecha seleccionada (por defecto hoy en zona horaria America/Lima)
 const fechaSeleccionada = computed(() => {
-  const hoy = new Date()
-  return hoy.toISOString().split('T')[0]
+  return getFechaHoy()
 })
 
-// Hora actual para comparaciones
-const horaActual = ref(new Date())
+// Hora actual para comparaciones (en zona horaria America/Lima)
+const horaActual = ref(getAhora())
 setInterval(() => {
-  horaActual.value = new Date()
+  horaActual.value = getAhora()
 }, 30000) // Actualizar cada 30 segundos
 
 function getFullName(persona: { nombres: string; ap_paterno: string; ap_materno?: string | null }): string {
@@ -29,19 +29,11 @@ function getFullName(persona: { nombres: string; ap_paterno: string; ap_materno?
 }
 
 function formatTime(dateString: string): string {
-  const date = new Date(dateString)
-  return date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return formatearHora(dateString)
 }
 
 function formatDateTime(dateString: string): string {
-  const date = new Date(dateString)
-  return date.toLocaleString('es-PE', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  })
+  return formatearFechaHora(dateString)
 }
 
 function getEstadoSesion(sesion: SesionDelDia): 'finalizado' | 'en-curso' | 'proximo' | 'tarde' {
@@ -64,12 +56,7 @@ const sesionesAgrupadas = computed(() => {
   const grupos: Record<string, SesionDelDia[]> = {}
 
   sesionesDelDia.value.forEach(sesion => {
-    const fecha = new Date(sesion.fecha_hora_inicio).toLocaleDateString('es-PE', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      weekday: 'long'
-    })
+    const fecha = formatearFechaCompleta(sesion.fecha_hora_inicio)
 
     if (!grupos[fecha]) {
       grupos[fecha] = []
@@ -81,12 +68,7 @@ const sesionesAgrupadas = computed(() => {
 })
 
 function esFechaHoy(fecha: string): boolean {
-  const hoy = new Date().toLocaleDateString('es-PE', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long'
-  })
+  const hoy = formatearFechaCompleta(getAhoraISO())
   return fecha === hoy
 }
 

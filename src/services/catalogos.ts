@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getAhoraISO } from '@/utils/timezone'
 import type { Institucion, Periodo, Especialidad, Frecuencia, Horario, Profesor, Persona, TipoDocumento } from '@/types/database.types'
 
 // Tipo para profesor con relaciones
@@ -34,7 +35,7 @@ export async function createInstitucion(nombre: string): Promise<Institucion> {
 export async function updateInstitucion(id: number, nombre: string): Promise<Institucion> {
   const { data, error } = await supabase
     .from('instituciones')
-    .update({ nombre, updated_at: new Date().toISOString() })
+    .update({ nombre, updated_at: getAhoraISO() })
     .eq('id_institucion', id)
     .select()
     .single()
@@ -86,7 +87,7 @@ export async function createPeriodo(nombre: string, idInstitucion: number): Prom
 export async function updatePeriodo(id: number, nombre: string): Promise<Periodo> {
   const { data, error } = await supabase
     .from('periodos')
-    .update({ nombre, updated_at: new Date().toISOString() })
+    .update({ nombre, updated_at: getAhoraISO() })
     .eq('id_periodo', id)
     .select()
     .single()
@@ -138,7 +139,7 @@ export async function createEspecialidad(nombre: string, idInstitucion: number, 
 export async function updateEspecialidad(id: number, nombre: string, tipo: 'regular' | 'taller'): Promise<Especialidad> {
   const { data, error } = await supabase
     .from('especialidades')
-    .update({ nombre, tipo, updated_at: new Date().toISOString() })
+    .update({ nombre, tipo, updated_at: getAhoraISO() })
     .eq('id_especialidad', id)
     .select()
     .single()
@@ -418,7 +419,7 @@ export async function updateProfesor(
       num_documento: data.num_documento || null,
       celular: data.celular || null,
       correo: data.correo || null,
-      updated_at: new Date().toISOString()
+      updated_at: getAhoraISO()
     })
     .eq('id_persona', idProfesor)
 
@@ -428,7 +429,7 @@ export async function updateProfesor(
   const { data: profesor, error: profesorError } = await supabase
     .from('profesores')
     .update({
-      updated_at: new Date().toISOString()
+      updated_at: getAhoraISO()
     })
     .eq('id_profesor', idProfesor)
     .select()

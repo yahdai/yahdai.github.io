@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { MatriculaDetallada } from '@/services/matriculas'
 import { jsPDF } from 'jspdf'
 import logoYahdai from '@/assets/logoyahdai.png'
+import { TIMEZONE } from '@/utils/timezone'
 
 interface Props {
   matricula: MatriculaDetallada | null
@@ -149,7 +150,7 @@ async function downloadPDF() {
       doc.setFont('helvetica', 'normal')
       doc.setTextColor(grayColor.r, grayColor.g, grayColor.b)
       doc.text('Este documento es un comprobante oficial de Yahdai Academia.', margin, footerY)
-      doc.text(`Generado: ${new Date().toLocaleDateString('es-PE')}`, pageWidth - margin, footerY, { align: 'right' })
+      doc.text(`Generado: ${new Date().toLocaleDateString('es-PE', { timeZone: TIMEZONE })}`, pageWidth - margin, footerY, { align: 'right' })
     }
 
     // Función para dibujar sección con título
