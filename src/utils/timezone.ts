@@ -157,3 +157,30 @@ export function formatearFechaDisplay(fechaStr: string): string {
     month: 'long'
   })
 }
+
+/**
+ * Convierte un Date object a string ISO en tiempo local (sin conversión a UTC)
+ * Formato: YYYY-MM-DDTHH:mm:ss
+ * IMPORTANTE: Usa los valores locales del Date sin convertir a UTC
+ */
+export function dateToLocalISO(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  const second = String(date.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}`
+}
+
+/**
+ * Convierte un Date object a string de fecha local (sin conversión a UTC)
+ * Formato: YYYY-MM-DD
+ * IMPORTANTE: Usa los valores locales del Date sin convertir a UTC
+ */
+export function dateToLocalDateString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}

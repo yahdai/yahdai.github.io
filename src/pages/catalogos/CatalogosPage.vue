@@ -36,6 +36,8 @@ const formNombre = ref('')
 const formTipo = ref<'regular' | 'taller'>('taller')
 const formHoraInicio = ref('')
 const formHoraFin = ref('')
+const formNumerosDeDias = ref('')
+const formNumerosDeDiasError = ref<string | null>(null)
 const editingId = ref<number | null>(null)
 
 // Form fields - profesor
@@ -46,8 +48,6 @@ const formProfesorTipoDocumento = ref<number | null>(null)
 const formProfesorDocumento = ref('')
 const formProfesorCelular = ref('')
 const formProfesorCorreo = ref('')
-const formProfesorEspecialidad = ref<number | null>(null)
-const editingProfesorPersonaId = ref<number | null>(null)
 
 // ID institución hardcodeado (TODO: obtener del usuario logueado)
 const ID_INSTITUCION = 1
@@ -120,10 +120,6 @@ async function loadProfesores() {
   loading.value = true
   error.value = null
   try {
-    // Cargar especialidades si no están cargadas (para el select del modal)
-    if (especialidades.value.length === 0) {
-      especialidades.value = await getEspecialidades(ID_INSTITUCION)
-    }
     // Cargar tipos de documentos si no están cargados
     if (tiposDocumentos.value.length === 0) {
       tiposDocumentos.value = await getTiposDocumentos()
@@ -159,8 +155,6 @@ function resetProfesorForm() {
   formProfesorDocumento.value = ''
   formProfesorCelular.value = ''
   formProfesorCorreo.value = ''
-  formProfesorEspecialidad.value = null
-  editingProfesorPersonaId.value = null
 }
 
 function openCreateModal() {
@@ -169,6 +163,8 @@ function openCreateModal() {
   formTipo.value = 'taller'
   formHoraInicio.value = ''
   formHoraFin.value = ''
+  formNumerosDeDias.value = ''
+  formNumerosDeDiasError.value = null
   editingId.value = null
   resetProfesorForm()
 
@@ -203,9 +199,7 @@ function openEditModal(item: Institucion | Periodo | Especialidad | Frecuencia |
     formProfesorDocumento.value = profesor.personas.num_documento || ''
     formProfesorCelular.value = profesor.personas.celular || ''
     formProfesorCorreo.value = profesor.personas.correo || ''
-    formProfesorEspecialidad.value = profesor.id_especialidad
     editingId.value = profesor.id_profesor
-    editingProfesorPersonaId.value = profesor.id_persona
     modalTitle.value = 'Editar Profesor'
   } else {
     formNombre.value = (item as { nombre: string }).nombre
@@ -225,7 +219,10 @@ function openEditModal(item: Institucion | Periodo | Especialidad | Frecuencia |
         modalTitle.value = 'Editar Especialidad'
         break
       case 'frecuencias':
-        editingId.value = (item as Frecuencia).id_frecuencia
+        const frecuencia = item as Frecuencia
+        editingId.value = frecuencia.id_frecuencia
+        formNumerosDeDias.value = frecuencia.numeros_de_dias || ''
+        formNumerosDeDiasError.value = null
         modalTitle.value = 'Editar Frecuencia'
         break
     }
@@ -240,6 +237,8 @@ function closeModal() {
   formTipo.value = 'taller'
   formHoraInicio.value = ''
   formHoraFin.value = ''
+  formNumerosDeDias.value = ''
+  formNumerosDeDiasError.value = null
   editingId.value = null
   resetProfesorForm()
 }
@@ -247,6 +246,55 @@ function closeModal() {
 function showSuccess(message: string) {
   successMessage.value = message
   setTimeout(() => { successMessage.value = null }, 3000)
+}
+
+// Validar formato de días (números del 1 al 7 separados por comas)
+function validarNumerosDeDias(valor: string): boolean {
+  if (!valor.trim()) {
+    formNumerosDeDiasError.value = 'Los días son obligatorios'
+    return false
+  }
+
+  // Limpiar espacios y validar formato
+  const partes = valor.split(',').map(p => p.trim())
+
+  for (const parte of partes) {
+    const num = parseInt(parte, 10)
+    if (isNaN(num) || num < 1 || num > 7 || parte !== num.toString()) {
+      formNumerosDeDiasError.value = 'Solo se permiten números del 1 al 7 separados por comas'
+      return false
+    }
+  }
+
+  // Verificar duplicados
+  const numeros = partes.map(p => parseInt(p, 10))
+  if (new Set(numeros).size !== numeros.length) {
+    formNumerosDeDiasError.value = 'No se permiten días duplicados'
+    return false
+  }
+
+  formNumerosDeDiasError.value = null
+  return true
+}
+
+// Formatear números de días para guardar (sin espacios)
+function formatearNumerosDeDias(valor: string): string {
+  return valor.split(',').map(p => p.trim()).join(',')
+}
+
+// Convertir números de días a nombres
+function getDiasNombres(numeros: string): string {
+  if (!numeros) return '-'
+  const diasNombres: Record<string, string> = {
+    '1': 'Dom',
+    '2': 'Lun',
+    '3': 'Mar',
+    '4': 'Mié',
+    '5': 'Jue',
+    '6': 'Vie',
+    '7': 'Sáb'
+  }
+  return numeros.split(',').map(n => diasNombres[n.trim()] || n).join(', ')
 }
 
 // ============================================
@@ -292,11 +340,18 @@ async function handleSave() {
     }
 
     else if (activeTab.value === 'frecuencias') {
+      // Validar días antes de guardar
+      if (!validarNumerosDeDias(formNumerosDeDias.value)) {
+        loading.value = false
+        return
+      }
+      const diasFormateados = formatearNumerosDeDias(formNumerosDeDias.value)
+
       if (modalMode.value === 'create') {
-        await createFrecuencia(formNombre.value)
+        await createFrecuencia(formNombre.value, diasFormateados)
         showSuccess('Frecuencia creada correctamente')
       } else {
-        await updateFrecuencia(editingId.value!, formNombre.value)
+        await updateFrecuencia(editingId.value!, formNombre.value, diasFormateados)
         showSuccess('Frecuencia actualizada correctamente')
       }
       await loadFrecuencias()
@@ -323,20 +378,18 @@ async function handleSave() {
           num_documento: formProfesorDocumento.value || undefined,
           celular: formProfesorCelular.value || undefined,
           correo: formProfesorCorreo.value || undefined,
-          id_especialidad: formProfesorEspecialidad.value || undefined,
           id_institucion: ID_INSTITUCION
         })
         showSuccess('Profesor creado correctamente')
       } else {
-        await updateProfesor(editingId.value!, editingProfesorPersonaId.value!, {
+        await updateProfesor(editingId.value!, {
           nombres: formProfesorNombres.value,
           ap_paterno: formProfesorApPaterno.value,
           ap_materno: formProfesorApMaterno.value || undefined,
           id_tipo_documento: formProfesorTipoDocumento.value || undefined,
           num_documento: formProfesorDocumento.value || undefined,
           celular: formProfesorCelular.value || undefined,
-          correo: formProfesorCorreo.value || undefined,
-          id_especialidad: formProfesorEspecialidad.value || undefined
+          correo: formProfesorCorreo.value || undefined
         })
         showSuccess('Profesor actualizado correctamente')
       }
@@ -678,23 +731,27 @@ onMounted(() => {
                 <tr>
                   <th>ID</th>
                   <th>Nombre</th>
+                  <th>Días</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="loading">
-                  <td colspan="3" class="text-center py-8">
+                  <td colspan="4" class="text-center py-8">
                     <span class="loading loading-spinner loading-md"></span>
                   </td>
                 </tr>
                 <tr v-else-if="frecuencias.length === 0">
-                  <td colspan="3" class="text-center text-base-content/60">
+                  <td colspan="4" class="text-center text-base-content/60">
                     No hay frecuencias registradas
                   </td>
                 </tr>
                 <tr v-else v-for="item in frecuencias" :key="item.id_frecuencia">
                   <td>{{ item.id_frecuencia }}</td>
                   <td>{{ item.nombre }}</td>
+                  <td>
+                    <span class="text-sm text-base-content/70">{{ getDiasNombres(item.numeros_de_dias) }}</span>
+                  </td>
                   <td>
                     <div class="flex gap-1">
                       <button class="btn btn-ghost btn-sm btn-square" @click="openEditModal(item)">
@@ -789,19 +846,18 @@ onMounted(() => {
                   <th>ID</th>
                   <th>Nombre Completo</th>
                   <th>Documento</th>
-                  <th>Especialidad</th>
                   <th>Celular</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="loading">
-                  <td colspan="6" class="text-center py-8">
+                  <td colspan="5" class="text-center py-8">
                     <span class="loading loading-spinner loading-md"></span>
                   </td>
                 </tr>
                 <tr v-else-if="profesores.length === 0">
-                  <td colspan="6" class="text-center text-base-content/60">
+                  <td colspan="5" class="text-center text-base-content/60">
                     No hay profesores registrados
                   </td>
                 </tr>
@@ -809,7 +865,6 @@ onMounted(() => {
                   <td>{{ item.id_profesor }}</td>
                   <td>{{ getProfesorFullName(item) }}</td>
                   <td>{{ item.personas.num_documento || '-' }}</td>
-                  <td>{{ item.especialidades?.nombre || '-' }}</td>
                   <td>{{ item.personas.celular || '-' }}</td>
                   <td>
                     <div class="flex gap-1">
@@ -868,6 +923,26 @@ onMounted(() => {
                 <span class="label-text-alt">
                   <strong>Taller:</strong> Sesiones programadas (ej: Piano, Guitarra) |
                   <strong>Regular:</strong> Por grados continuos (ej: Primer grado)
+                </span>
+              </label>
+            </div>
+
+            <!-- Campo días solo para frecuencias -->
+            <div v-if="activeTab === 'frecuencias'" class="form-control">
+              <label class="label">
+                <span class="label-text">Días de la semana *</span>
+              </label>
+              <input
+                v-model="formNumerosDeDias"
+                type="text"
+                class="input input-bordered"
+                :class="{ 'input-error': formNumerosDeDiasError }"
+                placeholder="Ej: 2,4 (Lun, Mié)"
+                required
+              />
+              <label class="label">
+                <span class="label-text-alt" :class="{ 'text-error': formNumerosDeDiasError }">
+                  {{ formNumerosDeDiasError || '1=Dom, 2=Lun, 3=Mar, 4=Mié, 5=Jue, 6=Vie, 7=Sáb' }}
                 </span>
               </label>
             </div>
@@ -980,17 +1055,6 @@ onMounted(() => {
                   class="input input-bordered"
                   placeholder="correo@ejemplo.com"
                 />
-              </div>
-              <div class="form-control md:col-span-2">
-                <label class="label">
-                  <span class="label-text">Especialidad</span>
-                </label>
-                <select v-model="formProfesorEspecialidad" class="select select-bordered">
-                  <option :value="null">Sin especialidad</option>
-                  <option v-for="esp in especialidades" :key="esp.id_especialidad" :value="esp.id_especialidad">
-                    {{ esp.nombre }}
-                  </option>
-                </select>
               </div>
             </div>
           </div>

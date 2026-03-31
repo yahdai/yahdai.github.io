@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/services/supabase'
 import { validarDocumentoDuplicado } from '@/services/catalogos'
-import { getAhoraISO } from '@/utils/timezone'
+import { getAhoraISO, dateToLocalISO, dateToLocalDateString } from '@/utils/timezone'
 import type { Persona, TipoDocumento } from '@/types/database.types'
 
 const router = useRouter()
@@ -1009,8 +1009,8 @@ async function submitMatricula() {
             cronogramasParaInsertar.push({
               id_matricula: matricula.id_matricula,
               id_matricula_detalle: detalleInsertado.id_matricula_detalle,
-              fecha_hora_inicio: sesion.fechaHoraInicio.toISOString(),
-              fecha_hora_fin: sesion.fechaHoraFin.toISOString()
+              fecha_hora_inicio: dateToLocalISO(sesion.fechaHoraInicio),
+              fecha_hora_fin: dateToLocalISO(sesion.fechaHoraFin)
             })
           })
         }
@@ -1030,8 +1030,8 @@ async function submitMatricula() {
     if (cronogramaPagos.value.length > 0) {
       const pagosParaInsertar = cronogramaPagos.value.map(cuota => ({
         id_matricula: matricula.id_matricula,
-        fecha_cargo: cuota.fechaCargo.toISOString().split('T')[0],
-        fecha_vencimiento: cuota.fechaVencimiento.toISOString().split('T')[0],
+        fecha_cargo: dateToLocalDateString(cuota.fechaCargo),
+        fecha_vencimiento: dateToLocalDateString(cuota.fechaVencimiento),
         importe: cuota.importe,
         estado: 'pendiente'
       }))

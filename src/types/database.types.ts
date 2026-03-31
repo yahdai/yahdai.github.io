@@ -19,6 +19,7 @@ export interface Periodo {
 export interface Frecuencia {
   id_frecuencia: number
   nombre: string
+  numeros_de_dias: string
   created_at: string
 }
 

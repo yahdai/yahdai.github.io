@@ -171,10 +171,10 @@ export async function getFrecuencias(): Promise<Frecuencia[]> {
   return data || []
 }
 
-export async function createFrecuencia(nombre: string): Promise<Frecuencia> {
+export async function createFrecuencia(nombre: string, numeros_de_dias: string): Promise<Frecuencia> {
   const { data, error } = await supabase
     .from('frecuencias')
-    .insert({ nombre })
+    .insert({ nombre, numeros_de_dias })
     .select()
     .single()
 
@@ -182,10 +182,10 @@ export async function createFrecuencia(nombre: string): Promise<Frecuencia> {
   return data
 }
 
-export async function updateFrecuencia(id: number, nombre: string): Promise<Frecuencia> {
+export async function updateFrecuencia(id: number, nombre: string, numeros_de_dias: string): Promise<Frecuencia> {
   const { data, error } = await supabase
     .from('frecuencias')
-    .update({ nombre })
+    .update({ nombre, numeros_de_dias })
     .eq('id_frecuencia', id)
     .select()
     .single()
@@ -328,7 +328,6 @@ export interface CreateProfesorData {
   num_documento?: string
   celular?: string
   correo?: string
-  id_especialidad?: number
   id_institucion: number
 }
 
