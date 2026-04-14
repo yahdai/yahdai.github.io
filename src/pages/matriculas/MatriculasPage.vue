@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
-import { getMatriculas, getMatriculaStats, getPeriodos, getMatriculaById, deleteMatricula, type MatriculaConRelaciones, type MatriculaStats, type MatriculaDetallada } from '@/services/matriculas'
+import { getMatriculas, getMatriculaStats, getPeriodos, getMatriculaById, deleteMatricula, cambiarEstadoMatricula, finalizarMatriculasPorPeriodo, type MatriculaConRelaciones, type MatriculaStats, type MatriculaDetallada } from '@/services/matriculas'
 import type { Periodo } from '@/types/database.types'
 import MatriculaViewModal from './MatriculaViewModal.vue'
 
@@ -108,6 +108,68 @@ async function viewMatricula(id: number) {
 function closeModal() {
   showViewModal.value = false
   selectedMatricula.value = null
+}
+
+// ==========================================
+// CAMBIO DE ESTADO (individual y masivo)
+// ==========================================
+const modalEstado = ref(false)
+const loadingEstado = ref(false)
+const accionEstado = ref<{
+  tipo: 'individual' | 'masivo'
+  nuevoEstado: 'finalizado' | 'cancelado'
+  idMatricula?: number
+  nombreAlumno?: string
+  totalActivos?: number
+} | null>(null)
+
+function pedirCambioEstado(
+  matricula: MatriculaConRelaciones,
+  nuevoEstado: 'finalizado' | 'cancelado'
+) {
+  accionEstado.value = {
+    tipo: 'individual',
+    nuevoEstado,
+    idMatricula: matricula.id_matricula,
+    nombreAlumno: matricula.alumnos?.personas
+      ? getFullName(matricula.alumnos.personas)
+      : 'este alumno'
+  }
+  modalEstado.value = true
+}
+
+function pedirFinalizarPeriodo() {
+  accionEstado.value = {
+    tipo: 'masivo',
+    nuevoEstado: 'finalizado',
+    totalActivos: stats.value.activos
+  }
+  modalEstado.value = true
+}
+
+async function confirmarCambioEstado() {
+  if (!accionEstado.value) return
+  loadingEstado.value = true
+  try {
+    if (accionEstado.value.tipo === 'individual' && accionEstado.value.idMatricula) {
+      await cambiarEstadoMatricula(accionEstado.value.idMatricula, accionEstado.value.nuevoEstado)
+    } else if (accionEstado.value.tipo === 'masivo' && selectedPeriodo.value) {
+      await finalizarMatriculasPorPeriodo(selectedPeriodo.value)
+    }
+    modalEstado.value = false
+    accionEstado.value = null
+    await loadMatriculas()
+    await loadStats()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Error al cambiar estado'
+  } finally {
+    loadingEstado.value = false
+  }
+}
+
+function cancelarCambioEstado() {
+  modalEstado.value = false
+  accionEstado.value = null
 }
 
 async function handleDelete(id: number, nombreAlumno: string) {

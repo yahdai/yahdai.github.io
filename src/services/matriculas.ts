@@ -355,3 +355,22 @@ export async function deleteMatricula(id: number) {
 
   if (error) throw error
 }
+
+export async function cambiarEstadoMatricula(id: number, estado: 'finalizado' | 'cancelado') {
+  const { error } = await supabase
+    .from('matriculas')
+    .update({ estado })
+    .eq('id_matricula', id)
+
+  if (error) throw error
+}
+
+export async function finalizarMatriculasPorPeriodo(id_periodo: number) {
+  const { error } = await supabase
+    .from('matriculas')
+    .update({ estado: 'finalizado' })
+    .eq('id_periodo', id_periodo)
+    .eq('estado', 'activo')
+
+  if (error) throw error
+}

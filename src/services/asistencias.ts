@@ -223,6 +223,25 @@ export async function eliminarAsistencia(idAsistencia: number) {
   return true
 }
 
+export async function reprogramarSesion(params: {
+  id_cronograma_asistencia: number
+  nueva_fecha_hora_inicio: string
+  nueva_fecha_hora_fin: string
+}) {
+  const { data, error } = await supabase
+    .from('cronogramas_asistencias')
+    .update({
+      fecha_hora_inicio: params.nueva_fecha_hora_inicio,
+      fecha_hora_fin: params.nueva_fecha_hora_fin
+    })
+    .eq('id_cronograma_asistencia', params.id_cronograma_asistencia)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
 export interface AsistenciaDetalle {
   id_asistencia: number
   id_cronograma_asistencia: number

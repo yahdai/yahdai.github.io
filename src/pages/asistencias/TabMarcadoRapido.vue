@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { buscarAlumnos, getSesionesDelDia, marcarAsistencia, actualizarAsistencia } from '@/services/asistencias'
+import { buscarAlumnos, getSesionesDelDia, marcarAsistencia, actualizarAsistencia, reprogramarSesion } from '@/services/asistencias'
 import type { AlumnoAsistencia, SesionDelDia } from '@/services/asistencias'
 import { getFechaHoy, getAhora, getAhoraISO, formatearHora, formatearFechaHora, formatearFechaCompleta } from '@/utils/timezone'
 
@@ -244,6 +244,82 @@ function limpiarBusqueda() {
   searchInput.value = ''
   error.value = null
 }
+
+// ==========================================
+// REPROGRAMAR SESIÓN
+// ==========================================
+const modalReprogramar = ref(false)
+const sesionAReprogramar = ref<SesionDelDia | null>(null)
+const nuevaFecha = ref('')
+const nuevaHora = ref('')
+const errorReprogramar = ref<string | null>(null)
+const loadingReprogramar = ref(false)
+
+function abrirModalReprogramar(sesion: SesionDelDia) {
+  sesionAReprogramar.value = sesion
+  // Pre-cargar fecha y hora actuales de la sesión
+  const inicio = new Date(sesion.fecha_hora_inicio)
+  nuevaFecha.value = inicio.toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
+  nuevaHora.value = inicio.toLocaleTimeString('en-GB', {
+    timeZone: 'America/Lima',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+  errorReprogramar.value = null
+  modalReprogramar.value = true
+}
+
+function cerrarModalReprogramar() {
+  modalReprogramar.value = false
+  sesionAReprogramar.value = null
+  errorReprogramar.value = null
+}
+
+async function confirmarReprogramacion() {
+  if (!sesionAReprogramar.value || !nuevaFecha.value || !nuevaHora.value) {
+    errorReprogramar.value = 'Ingrese la nueva fecha y hora'
+    return
+  }
+
+  // Calcular duración original en ms
+  const inicioOriginal = new Date(sesionAReprogramar.value.fecha_hora_inicio)
+  const finOriginal = new Date(sesionAReprogramar.value.fecha_hora_fin)
+  const duracionMs = finOriginal.getTime() - inicioOriginal.getTime()
+
+  // Construir nueva fecha/hora inicio
+  const nuevaInicioISO = `${nuevaFecha.value}T${nuevaHora.value}:00`
+
+  // Calcular nueva fecha/hora fin manteniendo la misma duración
+  const nuevaInicioDate = new Date(nuevaInicioISO)
+  const nuevaFinDate = new Date(nuevaInicioDate.getTime() + duracionMs)
+  const nuevaFinISO = nuevaFinDate.toLocaleDateString('en-CA', { timeZone: 'America/Lima' })
+    + 'T'
+    + nuevaFinDate.toLocaleTimeString('en-GB', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' })
+    + ':00'
+
+  loadingReprogramar.value = true
+  errorReprogramar.value = null
+  try {
+    await reprogramarSesion({
+      id_cronograma_asistencia: sesionAReprogramar.value.id_cronograma_asistencia,
+      nueva_fecha_hora_inicio: nuevaInicioISO,
+      nueva_fecha_hora_fin: nuevaFinISO
+    })
+
+    cerrarModalReprogramar()
+
+    // Recargar sesiones del alumno
+    if (alumnoEncontrado.value) {
+      const sesiones = await getSesionesDelDia(alumnoEncontrado.value.id_alumno, fechaSeleccionada.value)
+      sesionesDelDia.value = sesiones
+    }
+  } catch (err: unknown) {
+    console.error('Error reprogramando sesión:', err)
+    errorReprogramar.value = 'Error al reprogramar la sesión'
+  } finally {
+    loadingReprogramar.value = false
+  }
+}
 </script>
 
 <template>
@@ -474,12 +550,23 @@ function limpiarBusqueda() {
                         </div>
                       </div>
 
-                      <!-- Bloqueado -->
-                      <div v-else-if="estaBloqueda(sesion)" class="flex items-center gap-1 justify-end text-base-content/60">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                        <span class="text-xs font-semibold">BLOQUEADO</span>
+                      <!-- Bloqueado (sesión futura) -->
+                      <div v-else-if="estaBloqueda(sesion)" class="flex flex-col items-end gap-1">
+                        <div class="flex items-center gap-1 text-base-content/60">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                          <span class="text-xs font-semibold">BLOQUEADO</span>
+                        </div>
+                        <button
+                          class="btn btn-outline btn-xs gap-1"
+                          @click="abrirModalReprogramar(sesion)"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          Reprogramar
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -511,6 +598,64 @@ function limpiarBusqueda() {
           {{ getFullName(alumnoEncontrado) }} no tiene sesiones programadas
         </p>
       </div>
+    </div>
+
+    <!-- Modal Reprogramar Sesión -->
+    <div v-if="modalReprogramar" class="modal modal-open">
+      <div class="modal-box max-w-sm">
+        <h3 class="font-bold text-base mb-4">Reprogramar Sesión</h3>
+
+        <div v-if="sesionAReprogramar" class="bg-base-200 rounded-lg p-3 mb-4 text-sm">
+          <div class="font-semibold">{{ sesionAReprogramar.especialidad.nombre }}</div>
+          <div class="text-xs text-base-content/60 mt-1">
+            {{ sesionAReprogramar.profesor.nombres }} {{ sesionAReprogramar.profesor.ap_paterno }}
+            • {{ formatearFechaCompleta(sesionAReprogramar.fecha_hora_inicio) }}
+            • {{ formatTime(sesionAReprogramar.fecha_hora_inicio) }}
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-sm font-medium">Nueva fecha</span>
+            </label>
+            <input
+              v-model="nuevaFecha"
+              type="date"
+              class="input input-bordered input-sm"
+            />
+          </div>
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-sm font-medium">Nueva hora de inicio</span>
+            </label>
+            <input
+              v-model="nuevaHora"
+              type="time"
+              class="input input-bordered input-sm"
+            />
+          </div>
+        </div>
+
+        <div v-if="errorReprogramar" class="alert alert-error mt-3 py-2 text-sm">
+          {{ errorReprogramar }}
+        </div>
+
+        <div class="modal-action mt-4">
+          <button class="btn btn-ghost btn-sm" @click="cerrarModalReprogramar" :disabled="loadingReprogramar">
+            Cancelar
+          </button>
+          <button
+            class="btn btn-primary btn-sm"
+            @click="confirmarReprogramacion"
+            :disabled="loadingReprogramar || !nuevaFecha || !nuevaHora"
+          >
+            <span v-if="loadingReprogramar" class="loading loading-spinner loading-xs"></span>
+            Confirmar
+          </button>
+        </div>
+      </div>
+      <div class="modal-backdrop" @click="cerrarModalReprogramar"></div>
     </div>
 
     <!-- Footer con último acceso -->
