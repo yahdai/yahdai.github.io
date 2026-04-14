@@ -356,7 +356,7 @@ export async function deleteMatricula(id: number) {
   if (error) throw error
 }
 
-export async function cambiarEstadoMatricula(id: number, estado: 'finalizado' | 'cancelado') {
+export async function cambiarEstadoMatricula(id: number, estado: 'activo' | 'finalizado' | 'cancelado') {
   const { error } = await supabase
     .from('matriculas')
     .update({ estado })

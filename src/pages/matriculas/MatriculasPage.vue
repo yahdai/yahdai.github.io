@@ -117,7 +117,7 @@ const modalEstado = ref(false)
 const loadingEstado = ref(false)
 const accionEstado = ref<{
   tipo: 'individual' | 'masivo'
-  nuevoEstado: 'finalizado' | 'cancelado'
+  nuevoEstado: 'activo' | 'finalizado' | 'cancelado'
   idMatricula?: number
   nombreAlumno?: string
   totalActivos?: number
@@ -125,7 +125,7 @@ const accionEstado = ref<{
 
 function pedirCambioEstado(
   matricula: MatriculaConRelaciones,
-  nuevoEstado: 'finalizado' | 'cancelado'
+  nuevoEstado: 'activo' | 'finalizado' | 'cancelado'
 ) {
   accionEstado.value = {
     tipo: 'individual',
@@ -365,15 +365,20 @@ onMounted(async () => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       </svg>
                     </button>
-                    <div v-if="matricula.estado === 'activo'" class="dropdown dropdown-end">
+                    <div class="dropdown dropdown-end">
                       <label tabindex="0" class="btn btn-ghost btn-sm btn-square" title="Cambiar estado">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                         </svg>
                       </label>
                       <ul tabindex="0" class="dropdown-content menu p-1 shadow bg-base-100 rounded-box w-40 text-sm z-10">
-                        <li><a class="text-info" @click="pedirCambioEstado(matricula, 'finalizado')">Finalizar</a></li>
-                        <li><a class="text-error" @click="pedirCambioEstado(matricula, 'cancelado')">Cancelar</a></li>
+                        <template v-if="matricula.estado === 'activo'">
+                          <li><a class="text-info" @click="pedirCambioEstado(matricula, 'finalizado')">Finalizar</a></li>
+                          <li><a class="text-error" @click="pedirCambioEstado(matricula, 'cancelado')">Cancelar</a></li>
+                        </template>
+                        <template v-else>
+                          <li><a class="text-success" @click="pedirCambioEstado(matricula, 'activo')">Reactivar</a></li>
+                        </template>
                       </ul>
                     </div>
                     <button
@@ -505,6 +510,14 @@ onMounted(async () => {
                 Cancelar
               </button>
             </template>
+            <template v-else>
+              <button
+                class="btn btn-sm btn-success btn-outline"
+                @click="pedirCambioEstado(matricula, 'activo')"
+              >
+                Reactivar
+              </button>
+            </template>
             <button
               class="btn btn-sm btn-error btn-outline"
               @click="handleDelete(matricula.id_matricula, matricula.alumnos?.personas ? getFullName(matricula.alumnos.personas) : 'este alumno')"
@@ -556,12 +569,12 @@ onMounted(async () => {
         </template>
         <template v-else>
           <h3 class="font-bold text-base mb-2">
-            {{ accionEstado?.nuevoEstado === 'finalizado' ? 'Finalizar matrícula' : 'Cancelar matrícula' }}
+            {{ accionEstado?.nuevoEstado === 'finalizado' ? 'Finalizar matrícula' : accionEstado?.nuevoEstado === 'cancelado' ? 'Cancelar matrícula' : 'Reactivar matrícula' }}
           </h3>
           <p class="text-sm text-base-content/70">
             ¿Confirma cambiar el estado de
             <span class="font-bold">{{ accionEstado?.nombreAlumno }}</span>
-            a <span class="badge badge-sm" :class="accionEstado?.nuevoEstado === 'finalizado' ? 'badge-info' : 'badge-error'">
+            a <span class="badge badge-sm" :class="accionEstado?.nuevoEstado === 'finalizado' ? 'badge-info' : accionEstado?.nuevoEstado === 'cancelado' ? 'badge-error' : 'badge-success'">
               {{ accionEstado?.nuevoEstado }}
             </span>?
           </p>
@@ -573,7 +586,7 @@ onMounted(async () => {
           </button>
           <button
             class="btn btn-sm"
-            :class="accionEstado?.nuevoEstado === 'finalizado' ? 'btn-info' : 'btn-error'"
+            :class="accionEstado?.nuevoEstado === 'activo' ? 'btn-success' : accionEstado?.nuevoEstado === 'finalizado' ? 'btn-info' : 'btn-error'"
             @click="confirmarCambioEstado"
             :disabled="loadingEstado"
           >
