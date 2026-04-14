@@ -219,6 +219,16 @@ onMounted(async () => {
             {{ periodo.nombre }}
           </option>
         </select>
+        <button
+          v-if="selectedPeriodo && stats.activos > 0"
+          class="btn btn-warning btn-sm sm:btn-md w-full sm:w-auto"
+          @click="pedirFinalizarPeriodo"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Finalizar periodo ({{ stats.activos }})
+        </button>
         <router-link to="/matriculas/nueva" class="btn btn-primary btn-sm sm:btn-md w-full sm:w-auto">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -355,6 +365,17 @@ onMounted(async () => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       </svg>
                     </button>
+                    <div v-if="matricula.estado === 'activo'" class="dropdown dropdown-end">
+                      <label tabindex="0" class="btn btn-ghost btn-sm btn-square" title="Cambiar estado">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                      </label>
+                      <ul tabindex="0" class="dropdown-content menu p-1 shadow bg-base-100 rounded-box w-40 text-sm z-10">
+                        <li><a class="text-info" @click="pedirCambioEstado(matricula, 'finalizado')">Finalizar</a></li>
+                        <li><a class="text-error" @click="pedirCambioEstado(matricula, 'cancelado')">Cancelar</a></li>
+                      </ul>
+                    </div>
                     <button
                       class="btn btn-ghost btn-sm btn-square text-error"
                       @click="handleDelete(matricula.id_matricula, matricula.alumnos?.personas ? getFullName(matricula.alumnos.personas) : 'este alumno')"
@@ -458,7 +479,7 @@ onMounted(async () => {
           </div>
 
           <!-- Acciones -->
-          <div class="flex gap-2 mt-4">
+          <div class="flex gap-2 mt-4 flex-wrap">
             <button
               class="btn btn-sm btn-outline flex-1"
               :class="{ 'loading': loadingModal }"
@@ -470,6 +491,20 @@ onMounted(async () => {
               </svg>
               Ver
             </button>
+            <template v-if="matricula.estado === 'activo'">
+              <button
+                class="btn btn-sm btn-info btn-outline"
+                @click="pedirCambioEstado(matricula, 'finalizado')"
+              >
+                Finalizar
+              </button>
+              <button
+                class="btn btn-sm btn-warning btn-outline"
+                @click="pedirCambioEstado(matricula, 'cancelado')"
+              >
+                Cancelar
+              </button>
+            </template>
             <button
               class="btn btn-sm btn-error btn-outline"
               @click="handleDelete(matricula.id_matricula, matricula.alumnos?.personas ? getFullName(matricula.alumnos.personas) : 'este alumno')"
@@ -505,6 +540,49 @@ onMounted(async () => {
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- Modal Confirmación Cambio de Estado -->
+    <div v-if="modalEstado" class="modal modal-open">
+      <div class="modal-box max-w-sm">
+        <template v-if="accionEstado?.tipo === 'masivo'">
+          <h3 class="font-bold text-base mb-2">Finalizar periodo</h3>
+          <p class="text-sm text-base-content/70 mb-1">
+            Esto cambiará a <span class="badge badge-info badge-sm">finalizado</span> las
+            <span class="font-bold">{{ accionEstado.totalActivos }}</span> matrícula(s) activas del periodo
+            <span class="font-bold">{{ periodos.find(p => p.id_periodo === selectedPeriodo)?.nombre }}</span>.
+          </p>
+          <p class="text-sm text-base-content/70">Esta acción no elimina datos, solo cambia el estado.</p>
+        </template>
+        <template v-else>
+          <h3 class="font-bold text-base mb-2">
+            {{ accionEstado?.nuevoEstado === 'finalizado' ? 'Finalizar matrícula' : 'Cancelar matrícula' }}
+          </h3>
+          <p class="text-sm text-base-content/70">
+            ¿Confirma cambiar el estado de
+            <span class="font-bold">{{ accionEstado?.nombreAlumno }}</span>
+            a <span class="badge badge-sm" :class="accionEstado?.nuevoEstado === 'finalizado' ? 'badge-info' : 'badge-error'">
+              {{ accionEstado?.nuevoEstado }}
+            </span>?
+          </p>
+        </template>
+
+        <div class="modal-action mt-4">
+          <button class="btn btn-ghost btn-sm" @click="cancelarCambioEstado" :disabled="loadingEstado">
+            Cancelar
+          </button>
+          <button
+            class="btn btn-sm"
+            :class="accionEstado?.nuevoEstado === 'finalizado' ? 'btn-info' : 'btn-error'"
+            @click="confirmarCambioEstado"
+            :disabled="loadingEstado"
+          >
+            <span v-if="loadingEstado" class="loading loading-spinner loading-xs"></span>
+            Confirmar
+          </button>
+        </div>
+      </div>
+      <div class="modal-backdrop" @click="cancelarCambioEstado"></div>
     </div>
 
     <!-- Modal de Vista de Detalles -->
